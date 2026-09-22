@@ -288,6 +288,8 @@ void FA_NAKED( init_hw ) ( void )
     for ( ;; )					// Forever..
 	    {
 		Flash_LED_12MS() ;			// Flash LED and wait
+		/* The wheel needs this quiet time between probe pulses. A shorter
+		 * delay can leave it waiting for the next frame. */
 		Delay_1024( T0DEL200MS ) ;
 							// Try to read a data packet,
 		QueryFFP( 0, 126 ) ;			// don't know how long - let it time out

@@ -29,7 +29,7 @@
 #define CMD_DELETE		0x01
 
 #define EFFECT_SINE		0x02
-#define EFFECT_SQUARE	0x03
+#define EFFECT_SQUARE		0x03
 #define EFFECT_TRIANGLE	0x04
 #define EFFECT_SAWTOOTH	0x05
 
@@ -54,50 +54,58 @@ typedef struct
 
 typedef struct
 {
-	uint8_t		command; 	// always 0x20
-	uint8_t 	effect_type;
-	uint8_t 	unknown;	// always 0x7f
-	
+	uint8_t		command;		// always 0x20
+	uint8_t		waveForm;
+	uint8_t		unknown1;		// always 0x7f
 	uint16_t	duration;
 	uint8_t		direction;
-} cmd_f0_common_t;
+} FFW_MIDI_Effect_Common_t;
 
-/* type for sine, square, triangle, sawtooth and ramp */
+/* Sine, square, triangle, sawtooth and ramp effects.  The Sidewinder wheel
+ * exposes a single ramp waveform, so sawtooth effects are approximated with
+ * that waveform. */
 typedef struct
 {
-	cmd_f0_common_t	common;
-	
-	uint8_t		precise_dir;
-	uint16_t	p_x_offset;
-	uint8_t		e_y1;
-	uint16_t	e_x1;
-	uint8_t		p_amplitude;
-	uint16_t	e_x2;
-	uint8_t		e_y2;
-	uint16_t	p_t;
-	uint8_t		p_y_offset;
-} cmd_f0_wave_t;
-
-typedef struct
-{
-	cmd_f0_common_t	common;
-	uint8_t	positive_coefficient;
-} cmd_f0_friction_t;
+	FFW_MIDI_Effect_Common_t	common;
+	uint8_t		preciseDirection;
+	uint16_t	phase;
+	uint8_t		attackLevel;
+	uint16_t	attackTime;
+	uint8_t		magnitude;
+	uint16_t	fadeTime;
+	uint8_t		fadeLevel;
+	uint16_t	frequency;
+	uint8_t		offset;
+} FFW_MIDI_Effect_Periodic_Ramp_t;
 
 typedef struct
 {
-	cmd_f0_common_t	common;
-	
-	uint8_t		unknown;
-	uint8_t		e_y1;
-	uint16_t 	e_x1;
-	uint8_t 	force;
-	uint16_t 	e_x2;
-	uint8_t 	e_y2;
-	uint8_t 	force_direction;
-} cmd_f0_constant_force_t;
+	FFW_MIDI_Effect_Common_t	common;
+	uint8_t		unknown2;		// always 0x7f
+	uint8_t		attackLevel;
+	uint16_t	attackTime;
+	uint8_t		magnitude;
+	uint16_t	fadeTime;
+	uint8_t		fadeLevel;
+	uint8_t		forceDirection;
+} FFW_MIDI_Effect_ConstantForce_t;
+
+typedef struct
+{
+	FFW_MIDI_Effect_Common_t	common;
+	uint16_t	negativeCoefficient;
+	uint8_t		conditionParameters[4];
+	uint16_t	positiveCoefficient;
+} FFW_MIDI_Effect_Spring_Inertia_Damper_t;
+
+typedef struct
+{
+	FFW_MIDI_Effect_Common_t	common;
+	uint8_t		coefficient;
+} FFW_MIDI_Effect_Friction_t;
 
 void FfbwheelEnableInterrupts(void);
+uint8_t FfbwheelDeviceControl(uint8_t usb_control);
 const uint8_t* FfbwheelGetSysExHeader(uint8_t* hdr_len);
 void FfbwheelSetAutoCenter(uint8_t enable);
 
@@ -106,6 +114,8 @@ void FfbwheelStopEffect(uint8_t effectId);
 void FfbwheelFreeEffect(uint8_t effectId);
 
 void FfbwheelModifyDuration(uint8_t effectId, uint16_t duration);
+void FfbwheelModifyDeviceGain(uint8_t gain);
+void FfbwheelSetCustomSample(uint8_t effectId, volatile TEffectState* effect, int8_t sample);
 
 void FfbwheelSetEnvelope(USB_FFBReport_SetEnvelope_Output_Data_t* data, volatile TEffectState* e);
 void FfbwheelSetCondition(USB_FFBReport_SetCondition_Output_Data_t* data, volatile TEffectState* e);
@@ -116,5 +126,22 @@ int  FfbwheelSetEffect(USB_FFBReport_SetEffect_Output_Data_t *data, volatile TEf
 void FfbwheelCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, volatile TEffectState* effect);
 
 uint8_t FfbwheelUsbToMidiEffectType(uint8_t usb_effect_type);
+
+/* Sidewinder wheel F1 parameter addresses. */
+#define FFW_MIDI_MODIFY_DURATION			0x00
+#define FFW_MIDI_MODIFY_ATTACK_LEVEL		0x03
+#define FFW_MIDI_MODIFY_ATTACK_TIME		0x04
+#define FFW_MIDI_MODIFY_MAGNITUDE			0x06
+#define FFW_MIDI_MODIFY_FADE_TIME			0x07
+#define FFW_MIDI_MODIFY_FADE_LEVEL			0x09
+#define FFW_MIDI_MODIFY_FORCE_DIRECTION	0x09
+#define FFW_MIDI_MODIFY_FREQUENCY			0x0a
+#define FFW_MIDI_MODIFY_OFFSET			0x0c
+#define FFW_MIDI_MODIFY_POSITIVE_COEFF		0x06
+#define FFW_MIDI_MODIFY_NEGATIVE_COEFF		0x03
+#define FFW_MIDI_MODIFY_DEVICE_GAIN		0x00
+
+/* 0x7d is the factory maximum and 0x3e/0x3f is neutral. */
+#define FFW_AUTOCENTER_STRENGTH			32
 
 #endif // _FFB_WHEEL_

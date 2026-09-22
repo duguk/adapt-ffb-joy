@@ -54,6 +54,7 @@ typedef struct
 	} FFP_MIDI_Effect_Friction;
 
 void FfbproEnableInterrupts(void);
+uint8_t FfbproDeviceControl(uint8_t usb_control);
 const uint8_t* FfbproGetSysExHeader(uint8_t* hdr_len);
 void FfbproSetAutoCenter(uint8_t enable);
 
@@ -62,6 +63,7 @@ void FfbproStopEffect(uint8_t id);
 void FfbproFreeEffect(uint8_t id);
 
 void FfbproModifyDuration(uint8_t effectId, uint16_t duration);
+void FfbproModifyDeviceGain(uint8_t gain);
 
 void FfbproSetEnvelope(USB_FFBReport_SetEnvelope_Output_Data_t* data, volatile TEffectState* effect);
 void FfbproSetCondition(USB_FFBReport_SetCondition_Output_Data_t* data, volatile TEffectState* effect);

@@ -164,6 +164,26 @@ void FfbproSetAutoCenter(uint8_t enable)
 	}
 }
 
+uint8_t FfbproDeviceControl(uint8_t usb_control)
+{
+	static const uint8_t usbToMidiControl[] = {
+		0x02, /* enable actuators */
+		0x03, /* disable actuators */
+		0x06, /* stop all */
+		0x01, /* reset */
+		0x05, /* pause */
+		0x04  /* continue */
+	};
+	uint8_t command[2] = {0xc5, 0};
+
+	if (usb_control < USB_DCTRL_ACTUATORS_ENABLE || usb_control > USB_DCTRL_CONTINUE)
+		return 0;
+
+	command[1] = usbToMidiControl[usb_control - 1];
+	FfbSendData(command, sizeof(command));
+	return 1;
+}
+
 const uint8_t* FfbproGetSysExHeader(uint8_t* hdr_len)
 {
 	static const uint8_t header[] = {0xf0, 0x00, 0x01, 0x0a, 0x01};
@@ -219,6 +239,11 @@ void FfbproSendModify(uint8_t effectId, uint8_t address, uint16_t value)
 void FfbproModifyDuration(uint8_t effectId, uint16_t duration)
 {
 	FfbproSendModify(effectId, 0x40, duration);
+}
+
+void FfbproModifyDeviceGain(uint8_t gain)
+{
+	FfbproSendModify(0x7f, 0x00, (gain >> 1) & 0x7f);
 }
 
 void FfbproSetEnvelope(
@@ -518,9 +543,10 @@ void FfbproSetRampForce(
 	USB_FFBReport_SetRampForce_Output_Data_t* data,
 	volatile TEffectState* effect)
 {
+	uint8_t eid = data->effectBlockIndex;
+
 	if (DoDebug(DEBUG_DETAIL))
 		{
-		uint8_t eid = data->effectBlockIndex;
 		LogTextP(PSTR("Set Ramp Force:"));
 		LogBinaryLf(data, sizeof(USB_FFBReport_SetRampForce_Output_Data_t));
 		LogTextP(PSTR("  id=")); LogBinaryLf(&eid, sizeof(eid));
@@ -548,8 +574,8 @@ void FfbproSetRampForce(
 	midi_data->param2 = UsbInt8ToMidiInt14(data->end);
 
 	if (effect->state & MEffectState_SentToJoystick) {
-		FfbproSendModify(data->reportId, 0x78, midi_data->param1);
-		FfbproSendModify(data->reportId, 0x74, midi_data->param2);
+		FfbproSendModify(eid, 0x78, midi_data->param1);
+		FfbproSendModify(eid, 0x74, midi_data->param2);
 	}
 }
 

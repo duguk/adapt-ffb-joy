@@ -157,10 +157,6 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 	}
 
 
-volatile bool sPIDStatusPending = false;
-volatile USB_FFBReport_PIDStatus_Input_Data_t sPIDStatus;
-
-
 /** Event handler for the USB_ControlRequest event. This is used to catch and process control requests sent to
  *  the device from the USB host before passing along unhandled control requests to the library for processing
  *  internally.
@@ -227,17 +223,31 @@ void EVENT_USB_Device_ControlRequest(void)
 					Endpoint_Write_Control_Stream_LE(&featureData, sizeof(USB_FFBReport_PIDPool_Feature_Data_t));
 					Endpoint_ClearOUT();
 					}
+				else if (((USB_ControlRequest.wValue >> 8) == HID_REPORT_ITEM_In) &&
+						((USB_ControlRequest.wValue & 0xFF) == 2))
+					{
+					USB_FFBReport_PIDStatus_Input_Data_t status;
+					FfbReadPidStatus(&status);
+					Endpoint_ClearSETUP();
+					Endpoint_Write_Control_Stream_LE(&status, sizeof(status));
+					Endpoint_ClearOUT();
+					}
 				else
 					{
-					USB_JoystickReport_Data_t JoystickReportData;
-
-					/* Create the next HID report to send to the host */
-					Joystick_CreateInputReport(USB_ControlRequest.wValue & 0xFF, &JoystickReportData);
-
 					Endpoint_ClearSETUP();
 
-					/* Write the report data to the control endpoint */
-					Endpoint_Write_Control_Stream_LE(&JoystickReportData, sizeof(USB_JoystickReport_Data_t));
+					if (sw_id == SW_ID_FFPW)
+						{
+						USB_WheelReport_Data_t WheelReportData;
+						Joystick_CreateWheelInputReport(USB_ControlRequest.wValue & 0xFF, &WheelReportData);
+						Endpoint_Write_Control_Stream_LE(&WheelReportData, sizeof(WheelReportData));
+						}
+					else
+						{
+						USB_JoystickReport_Data_t JoystickReportData;
+						Joystick_CreateInputReport(USB_ControlRequest.wValue & 0xFF, &JoystickReportData);
+						Endpoint_Write_Control_Stream_LE(&JoystickReportData, sizeof(JoystickReportData));
+						}
 					Endpoint_ClearOUT();
 					}
 
@@ -364,16 +374,30 @@ void HID_Task(void)
 	/* Check to see if the host is ready for another packet */
 	if (Endpoint_IsINReady())
 		{
-		USB_JoystickReport_Data_t JoystickReportData;
+		USB_FFBReport_PIDStatus_Input_Data_t pidStatus;
+		if (FfbGetPidStatus(&pidStatus))
+			{
+			Endpoint_Write_Stream_LE(&pidStatus, sizeof(pidStatus), NULL);
+			Endpoint_ClearIN();
+			}
+		else
+			{
+			if (sw_id == SW_ID_FFPW)
+				{
+				USB_WheelReport_Data_t WheelReportData;
+				Joystick_CreateWheelInputReport(INPUT_REPORTID_ALL, &WheelReportData);
+				Endpoint_Write_Stream_LE(&WheelReportData, sizeof(WheelReportData), NULL);
+				}
+			else
+				{
+				USB_JoystickReport_Data_t JoystickReportData;
+				Joystick_CreateInputReport(INPUT_REPORTID_ALL, &JoystickReportData);
+				Endpoint_Write_Stream_LE(&JoystickReportData, sizeof(JoystickReportData), NULL);
+				}
 
-		/* Create the next HID report to send to the host */
-		Joystick_CreateInputReport(INPUT_REPORTID_ALL, &JoystickReportData);
-
-		/* Write Joystick Report Data */
-		Endpoint_Write_Stream_LE(&JoystickReportData, sizeof(USB_JoystickReport_Data_t), NULL);
-
-		/* Finalize the stream transfer to send the last packet */
-		Endpoint_ClearIN();
+			/* Finalize the stream transfer to send the last packet */
+			Endpoint_ClearIN();
+			}
 		}
 
 	// Receive FFB data
@@ -388,7 +412,7 @@ void HID_Task(void)
 
 		while (Endpoint_BytesInEndpoint() && total_bytes_read < 64)
 			{
-			uint16_t out_wait_report_bytes = 0, out_report_data_read = 0;
+			uint16_t out_wait_report_bytes = 0;
 
 			// Read the reportID from the package to determine amount of data to expect next
 			while (Endpoint_Read_Stream_LE(&out_ffbdata, 1, NULL)
@@ -398,20 +422,23 @@ void HID_Task(void)
 
 			total_bytes_read += 1;
 
-			out_wait_report_bytes = OutReportSize[out_ffbdata[0]-1] - 1;
-			if (out_wait_report_bytes + total_bytes_read >= 64)
+			if (out_ffbdata[0] == 0 || out_ffbdata[0] > 14 ||
+					OutReportSize[out_ffbdata[0] - 1] == 0)
 				{
-				while (1)  {
-				LEDs_SetAllLEDs(LEDS_NO_LEDS);
-				_delay_ms(100);
-				LEDs_SetAllLEDs(LEDS_ALL_LEDS);
-				_delay_ms(100); }
+				Endpoint_Discard_Stream(Endpoint_BytesInEndpoint(), NULL);
+				break;
+				}
+
+			out_wait_report_bytes = OutReportSize[out_ffbdata[0] - 1] - 1;
+			if (out_wait_report_bytes + total_bytes_read > sizeof(out_ffbdata))
+				{
+				Endpoint_Discard_Stream(Endpoint_BytesInEndpoint(), NULL);
+				break;
 				}
 //			LogTextP(PSTR("Starting to read new report (reportId, bytesToWait)"));
 //			LogBinary(out_ffbdata, 1);
 //			LogBinary((uint8_t*) &out_wait_report_bytes, 2);
 
-			out_report_data_read = 0;
 			while (Endpoint_Read_Stream_LE(&out_ffbdata[1], out_wait_report_bytes, NULL)
 					== ENDPOINT_RWSTREAM_IncompleteTransfer)
 				{	// busy loop until the rest of the report data is read out

@@ -89,15 +89,22 @@ void Joystick_Init(void)
     uint8_t sw_sendrep ;
 
     // Initialize..
+#ifdef USE_FAKE_JOYSTICK
+	sw_id = SW_ID_FFPW;
+	FfbSetDriver(1);
+#else
+	init_hw() ;					// hardware. Note: defined as naked !
+#endif
 
-    init_hw() ;					// hardware. Note: defined as naked !
-	sw_reportsz = SW_REPSZ_FFP + ADDED_REPORT_DATA_SIZE;
+    sw_reportsz = SW_REPSZ_FFP + ADDED_REPORT_DATA_SIZE;
 
     SetTMPS( 1, 64 ) ;				// Set T1 prescaler to /64
     SetTMPS( 0, 1024 ) ;			// Set T0 prescaler to / 1024 for delay
 
-    sw_sendrep = sw_repchg() ;			// Init send report flag, saved report
+	sw_sendrep = sw_repchg() ;			// Init send report flag, saved report
 
+	/* Give the wheel time to finish its startup before sending MIDI reset
+	 * and auto-centering parameters. */
 	WaitMs(1000);
 
 	// Force feedback
@@ -105,7 +112,9 @@ void Joystick_Init(void)
 
 	// ADC for extra controls
 	DDRF = 0; // all inputs
-//	PORTF |= 0xff; // all pullups enabled
+	// The Sidewinder input setup enables pull-ups on PORTF.  They must be
+	// disabled for the four pins used as potentiometer inputs.
+	PORTF &= ~((1 << PF0) | (1 << PF1) | (1 << PF4) | (1 << PF5));
 
 	// Init and enable ADC
 	ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
@@ -149,6 +158,15 @@ static volatile AddedControls_ADC_t added_controls_adc;
 
 static volatile JoystickData prev_joystick_data;
 static volatile uint8_t ADC_is_ready = 0;
+static uint8_t wheelForceButtonPressed;
+static uint8_t wheelForceButtonStateValid;
+
+static uint8_t ScaleWheelPedal(uint8_t value)
+	{
+	/* The wheel reports pedals with six useful bits.  Scale to the full
+	 * unsigned HID range so hosts receive an exact 0..255 endpoint. */
+	return ((uint16_t)value * 255) / 63;
+	}
 
 
 
@@ -157,6 +175,7 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 	// Read the data from the FFP-joystick
 
 	int InputChanged = 1;	// ???? TODO: check for actual changes to avoid unnecessary input reports
+	memset(outReportData, 0, sizeof(*outReportData));
 
 #ifndef USE_FAKE_JOYSTICK
 	// Code from 3DPVert begins-->
@@ -253,11 +272,39 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 
 	if (sw_id == SW_ID_FFPW)
 		{
-		outReportData->Button = ((sw_report[2] << 2) | (sw_report[3] >> 6)) ^ 0x00ff;
+		/* The wheel packet is active low. Bit 7 of sw_report[2] is the
+		 * packet sync bit; bits 0..6 are buttons C,R,X,Y,Z,L and Force.
+		 * Put the Force switch at user-facing HID button 8; keep L at button 9
+		 * so the adjacent B7 input cannot affect centering. */
+		outReportData->Button =
+			((uint16_t)((~sw_report[3] >> 6) & 0x03)) |
+			((uint16_t)(~sw_report[2] & 0x1f) << 2) |
+			((uint16_t)(~sw_report[2] & 0x40) << 1) |
+			((uint16_t)(~sw_report[2] & 0x20) << 3);
+
+		/* The Force switch is bit 6 of the wheel packet.  It is exposed as
+		 * HID button 8. */
+		uint8_t forceButtonPressed = !(sw_report[2] & 0x40);
+		/* The wheel is deliberately left with auto-centering disabled during
+		 * startup. Synchronize once with the first valid input frame as well as
+		 * on later button transitions; otherwise a button already held during
+		 * startup can leave the wheel permanently unsynchronized. */
+		if (!wheelForceButtonStateValid ||
+			forceButtonPressed != wheelForceButtonPressed)
+			{
+			wheelForceButtonPressed = forceButtonPressed;
+			wheelForceButtonStateValid = 1;
+			FfbSetAutoCenter(forceButtonPressed);
+			}
 		outReportData->X = ((sw_report[4] & 0x03) << 8) + sw_report[5];
 		outReportData->Y = (sw_report[4] & 0xfc) << 2;
-		/* actually break for wheel */
-		outReportData->Throttle = 63-(sw_report[3] & 0x3f);
+		/* The wheel packet carries brake in a 6-bit field and accelerator in
+		 * the second analog axis.  Export both as full-range simulation axes. */
+		outReportData->Brake = ScaleWheelPedal(63 - (sw_report[3] & 0x3f));
+		outReportData->Accelerator = ScaleWheelPedal((sw_report[4] & 0xfc) >> 2);
+		outReportData->Rz = 0;
+		/* Hat switch value 8 is the HID null state for a 0..7 hat. */
+		outReportData->Hat = 0x08;
 		}
 	else
 		{
@@ -273,14 +320,15 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 		outReportData->Button = ((sw_report[4] & 0x7F) << 2) + ((sw_report[3] & 0xC0) >> 6);
 		outReportData->Hat = sw_report[2] >> 4;
 		outReportData->Rz = (sw_report[3] & 0x3f) - 32;
-		outReportData->Throttle = ((sw_report[5] & 0x3f) << 1) + (sw_report[4] >> 7);
+		outReportData->Accelerator = ((sw_report[5] & 0x3f) << 1) + (sw_report[4] >> 7);
 		if (sw_report[5] & 0x20)
-			outReportData->Throttle |= 0b11000000;
+			outReportData->Accelerator |= 0b11000000;
 
 		outReportData->Z = 0;	// not used at the moment
 
 		// Get data from additional controls
-		outReportData->Rudder = (added_controls_adc.pedal2 - added_controls_adc.pedal1) / 2 - 128;	// Combine two pedals into a single rudder
+		outReportData->Brake = added_controls_adc.pedal1;
+		outReportData->Accelerator = added_controls_adc.pedal2;
 		outReportData->Rx = added_controls_adc.trim2;	// rudder trim
 		outReportData->Ry = added_controls_adc.trim1;	// elevator trim
 		}
@@ -324,11 +372,29 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 	outReportData->Rz = prev_joystick_data.position & 0x7F;
 	outReportData->Rx = prev_joystick_data.position & 0xFF;
 	outReportData->Ry = prev_joystick_data.position & 0xFF;
-	outReportData->Throttle = prev_joystick_data.position & 0xFF;
+	outReportData->Accelerator = prev_joystick_data.position & 0xFF;
 	outReportData->Slider = prev_joystick_data.position & 0xFF;
 	outReportData->Hat = prev_joystick_data.position % 8;
 */
 	return InputChanged;
+	}
+
+int Joystick_CreateWheelInputReport(uint8_t inReportId,
+	USB_WheelReport_Data_t* const outReportData)
+	{
+	USB_JoystickReport_Data_t source;
+	int inputChanged = Joystick_CreateInputReport(inReportId, &source);
+
+	outReportData->reportId = source.reportId;
+	outReportData->X = source.X;
+	/* The HID report carries pedals as unsigned 0..255 values.  The wheel's
+	 * accelerator is electrically high at rest, so reverse it here. */
+	outReportData->Accelerator = 0xff - source.Accelerator;
+	outReportData->Brake = source.Brake;
+	outReportData->Button = source.Button;
+	outReportData->Hat = source.Hat;
+
+	return inputChanged;
 	}
 
 

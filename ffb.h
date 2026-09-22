@@ -85,10 +85,10 @@ typedef struct
 	uint8_t	parameterBlockOffset;	// bits: 0..3=parameterBlockOffset, 4..5=instance1, 6..7=instance2
 	uint8_t cpOffset;	// 0..255
 	int8_t	positiveCoefficient;	// -128..127
-//	int8_t	negativeCoefficient;	// -128..127
-//	uint8_t	positiveSaturation;	// -128..127
-//	uint8_t	negativeSaturation;	// -128..127
-//	uint8_t	deadBand;	// 0..255
+	int8_t	negativeCoefficient;	// -128..127
+	uint8_t	positiveSaturation;	// 0..255
+	uint8_t	negativeSaturation;	// 0..255
+	uint8_t	deadBand;	// 0..255
 	} USB_FFBReport_SetCondition_Output_Data_t;
 
 typedef struct
@@ -196,9 +196,12 @@ extern const uint16_t OutReportSize[];
 // Handles Force Feeback data manipulation from USB reports to joystick's MIDI channel
 
 void FfbSetDriver(uint8_t id);
+void FfbSetAutoCenter(uint8_t enable);
 
 // Initializes and enables MIDI to joystick using USART1 TX
 void FfbInitMidi(void);
+uint8_t FfbGetPidStatus(USB_FFBReport_PIDStatus_Input_Data_t* status);
+void FfbReadPidStatus(USB_FFBReport_PIDStatus_Input_Data_t* status);
 
 // Send "enable FFB" to joystick
 void FfbSendEnable(void);
@@ -280,6 +283,13 @@ void FfbEnableEffectId(uint8_t inId, uint8_t inEnable);
 #define USB_EFFECT_FRICTION		0x0B
 #define USB_EFFECT_CUSTOM		0x0C
 
+#define USB_DCTRL_ACTUATORS_ENABLE	0x01
+#define USB_DCTRL_ACTUATORS_DISABLE	0x02
+#define USB_DCTRL_STOPALL			0x03
+#define USB_DCTRL_RESET			0x04
+#define USB_DCTRL_PAUSE			0x05
+#define USB_DCTRL_CONTINUE			0x06
+
 #define MAX_MIDI_MSG_LEN 27 /* enough to hold longest midi message data part, FFP_MIDI_Effect_Basic */
 
 /* start of midi data common for both pro and wheel protocols */
@@ -296,6 +306,10 @@ typedef struct {
 	// These are used to calculate effects of USB gain to MIDI data
 	uint8_t usb_gain, usb_offset, usb_attackLevel, usb_fadeLevel;
 	uint8_t usb_magnitude;
+	uint8_t custom_data[12];
+	uint8_t custom_data_offset;
+	uint8_t custom_sample_count;
+	uint16_t custom_sample_period;
 	volatile uint8_t	data[MAX_MIDI_MSG_LEN];
 	} TEffectState;
 
@@ -304,6 +318,7 @@ typedef struct
 	void (*EnableInterrupts)(void);
 	const uint8_t* (*GetSysExHeader)(uint8_t* hdr_len);
 	void (*SetAutoCenter)(uint8_t enable);
+	uint8_t (*DeviceControl)(uint8_t usb_control);
 	uint8_t (*UsbToMidiEffectType)(uint8_t usb_effect_type);
 	
 	void (*StartEffect)(uint8_t eid);
@@ -311,6 +326,7 @@ typedef struct
 	void (*FreeEffect)(uint8_t eid);
 	
 	void (*ModifyDuration)(uint8_t effectId, uint16_t duration);
+	void (*ModifyDeviceGain)(uint8_t gain);
 	
 	void (*CreateNewEffect)(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, volatile TEffectState* effect);
 	void (*SetEnvelope)(USB_FFBReport_SetEnvelope_Output_Data_t* data, volatile TEffectState* effect);

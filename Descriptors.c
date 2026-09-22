@@ -98,9 +98,10 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 
     HID_RI_END_COLLECTION(0),
 
-	0x09, 0x36,		//   USAGE (Rudder - hmm...actual rudder code 0xBA does not seem to work in Windows - so use slider)
-    HID_RI_LOGICAL_MINIMUM(8, -128),
-    HID_RI_LOGICAL_MAXIMUM(8, 127),
+	0x05, 0x02,                    //   USAGE_PAGE (Simulation Controls)
+	0x09, 0xc5,		//   USAGE (Brake)
+    HID_RI_LOGICAL_MINIMUM(8, 0),
+    HID_RI_LOGICAL_MAXIMUM(8, 255),
     HID_RI_PHYSICAL_MAXIMUM(8, 255),
     HID_RI_REPORT_SIZE(8, 0x08),
     HID_RI_REPORT_COUNT(8, 0x01),
@@ -108,13 +109,13 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 
 	0x05, 0x02,                    //   USAGE_PAGE (Simulation Controls)
 
-	0x09, 0xbb,		//   USAGE (Throttle)
-    HID_RI_LOGICAL_MINIMUM(8, -64),
-    HID_RI_LOGICAL_MAXIMUM(8, 63),
-    HID_RI_PHYSICAL_MAXIMUM(8, 127),
+	0x09, 0xc4,		//   USAGE (Accelerator)
+	    HID_RI_LOGICAL_MINIMUM(8, 0),
+	    HID_RI_LOGICAL_MAXIMUM(8, 255),
+	    HID_RI_PHYSICAL_MAXIMUM(8, 255),
     HID_RI_REPORT_SIZE(8, 0x08),
     HID_RI_REPORT_COUNT(8, 0x01),
-	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),		 // Throttle
+	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),		 // Accelerator
 
     HID_RI_USAGE_PAGE(8, 0x09),
     HID_RI_USAGE_MINIMUM(8, 0x01),
@@ -438,8 +439,8 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 		0x36,0xF0,0xD8,	// PHYSICAL_MINIMUM (-10000)
 		0x46,0x10,0x27,	// PHYSICAL_MAXIMUM (10000)
 		0x09,0x61,	// USAGE (Positive Coefficient)
-//		0x09,0x62,	// USAGE (Negative Coefficient)
-		0x95,0x01,	// REPORT_COUNT (01)	// ???? WAS 2 with "negative coeff"
+		0x09,0x62,	// USAGE (Negative Coefficient)
+		0x95,0x02,	// REPORT_COUNT (02)
 		0x91,0x02,	// OUTPUT (Data,Var,Abs)
 		0x15,0x00,	// LOGICAL_MINIMUM (00)
 		0x26,0xFF,0x00,	// LOGICAL_MAXIMUM (00 FF)
@@ -449,11 +450,11 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 		0x09,0x64,	// USAGE (Negative Saturation)
 		0x75,0x08,	// REPORT_SIZE (08)
 		0x95,0x02,	// REPORT_COUNT (02)
-//		0x91,0x02,	// OUTPUT (Data,Var,Abs)
-//		0x09,0x65,	// USAGE (Dead Band )
+		0x91,0x02,	// OUTPUT (Data,Var,Abs)
+		0x09,0x65,	// USAGE (Dead Band )
 		0x46,0x10,0x27,	// PHYSICAL_MAXIMUM (10000)
 		0x95,0x01,	// REPORT_COUNT (01)
-//		0x91,0x02,	// OUTPUT (Data,Var,Abs)
+		0x91,0x02,	// OUTPUT (Data,Var,Abs)
 	0xC0,	// END COLLECTION ()
 	
 	0x09,0x6E,	// USAGE (Set Periodic Report)
@@ -808,65 +809,35 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 0xA1,0x01,	// COLLECTION (Application)
 	0x85,0x01,	// REPORT_ID (1)
 
-	// FFP input descriptor:
-    HID_RI_USAGE(8, 0x04), // Pointer
-    HID_RI_COLLECTION(8, 0x00), // Physical
-        HID_RI_USAGE(8, 0x30), // Usage X
-        HID_RI_USAGE(8, 0x31), // Usage Y
-        HID_RI_USAGE(8, 0x32), // Usage Z
-        HID_RI_LOGICAL_MINIMUM(16, 0),
-        HID_RI_LOGICAL_MAXIMUM(16, 1023),
-        HID_RI_PHYSICAL_MINIMUM(8, 0),
-        HID_RI_PHYSICAL_MAXIMUM(16, 1023),
-        HID_RI_REPORT_COUNT(8, 0x03),
-        HID_RI_REPORT_SIZE(8, 0x10),
-        HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
-
-		0x09, 0x35,		//     USAGE (Rz)
-        HID_RI_LOGICAL_MINIMUM(8, 0),
-        HID_RI_LOGICAL_MAXIMUM(8, 63),
-        HID_RI_PHYSICAL_MINIMUM(8, 0),
-        HID_RI_PHYSICAL_MAXIMUM(8, 46),
-        HID_RI_REPORT_COUNT(8, 0x01),
-        HID_RI_REPORT_SIZE(8, 0x06),
-		0x81, 0x02,		//     INPUT (Data,Var,Abs)		 6b Rz
-
-		0x75, 0x02,		//     REPORT_SIZE (2)
-		0x95, 0x01,		//     REPORT_COUNT (1)
-		0x81, 0x01,		//     INPUT (Cnst,Ary,Abs)		 2b Fill
-
-
-		0x65, 0x00,		//     UNIT (None)
-
-		0x09, 0x33,     //   USAGE (Rx)
-		0x09, 0x34,		//   USAGE (Ry)
-	    HID_RI_LOGICAL_MINIMUM(8, 0),
-	    HID_RI_LOGICAL_MAXIMUM(8, 255),
-        HID_RI_PHYSICAL_MAXIMUM(8, 255),
-	    HID_RI_REPORT_SIZE(8, 0x08),
-        HID_RI_REPORT_SIZE(8, 0x08),
-	    HID_RI_REPORT_COUNT(8, 0x02),
+	// Wheel input: axis 0 steering, axis 1 accelerator, axis 2 brake.
+	HID_RI_USAGE(8, 0x01), // Pointer
+	HID_RI_COLLECTION(8, 0x00), // Physical
+		HID_RI_USAGE(8, 0x30), // Usage X
+		HID_RI_LOGICAL_MINIMUM(16, 0),
+		HID_RI_LOGICAL_MAXIMUM(16, 1023),
+		HID_RI_PHYSICAL_MINIMUM(8, 0),
+		HID_RI_PHYSICAL_MAXIMUM(16, 1023),
+		HID_RI_REPORT_COUNT(8, 0x01),
+		HID_RI_REPORT_SIZE(8, 0x10),
 		HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
-
-    HID_RI_END_COLLECTION(0),
-
-	0x09, 0x36,		//   USAGE (Rudder - hmm...actual rudder code 0xBA does not seem to work in Windows - so use slider)
-    HID_RI_LOGICAL_MINIMUM(8, -128),
-    HID_RI_LOGICAL_MAXIMUM(8, 127),
-    HID_RI_PHYSICAL_MAXIMUM(8, 255),
-    HID_RI_REPORT_SIZE(8, 0x08),
-    HID_RI_REPORT_COUNT(8, 0x01),
-	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+	HID_RI_END_COLLECTION(0),
 
 	0x05, 0x02,                    //   USAGE_PAGE (Simulation Controls)
+	0x09, 0xc4,                    //   USAGE (Accelerator)
+	HID_RI_LOGICAL_MINIMUM(8, 0),
+	HID_RI_LOGICAL_MAXIMUM(8, 255),
+	HID_RI_PHYSICAL_MAXIMUM(8, 255),
+	HID_RI_REPORT_SIZE(8, 0x08),
+	HID_RI_REPORT_COUNT(8, 0x01),
+	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
 
-	0x09, 0xbb,		//   USAGE (Throttle)
-    HID_RI_LOGICAL_MINIMUM(8, 0),
-    HID_RI_LOGICAL_MAXIMUM(8, 63),
-    HID_RI_PHYSICAL_MAXIMUM(8, 63),
-    HID_RI_REPORT_SIZE(8, 0x08),
-    HID_RI_REPORT_COUNT(8, 0x01),
-	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),		 // Throttle
+	0x09, 0xc5,                    //   USAGE (Brake)
+	HID_RI_LOGICAL_MINIMUM(8, 0),
+	HID_RI_LOGICAL_MAXIMUM(8, 255),
+	HID_RI_PHYSICAL_MAXIMUM(8, 255),
+	HID_RI_REPORT_SIZE(8, 0x08),
+	HID_RI_REPORT_COUNT(8, 0x01),
+	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
 
     HID_RI_USAGE_PAGE(8, 0x09),
     HID_RI_USAGE_MINIMUM(8, 0x01),
@@ -879,10 +850,15 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
     HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
 
     HID_RI_USAGE_MINIMUM(8, 0x09),
-    HID_RI_USAGE_MAXIMUM(8, 0x10),
+    HID_RI_USAGE_MAXIMUM(8, 0x09),
     HID_RI_REPORT_SIZE(8, 0x01),
-    HID_RI_REPORT_COUNT(8, 0x08),
+    HID_RI_REPORT_COUNT(8, 0x01),
     HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+	/* Keep the input report at two button bytes; only nine buttons are
+	 * declared and the remaining seven bits are padding. */
+	HID_RI_REPORT_SIZE(8, 0x07),
+	HID_RI_REPORT_COUNT(8, 0x01),
+	HID_RI_INPUT(8, HID_IOF_CONSTANT | HID_IOF_ARRAY | HID_IOF_ABSOLUTE),
 
 	HID_RI_USAGE_PAGE(8, 0x01), // Generic Desktop
 	0x09, 0x39,		//     USAGE (Hat switch)
@@ -1120,8 +1096,8 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 		0x36,0xF0,0xD8,	// PHYSICAL_MINIMUM (-10000)
 		0x46,0x10,0x27,	// PHYSICAL_MAXIMUM (10000)
 		0x09,0x61,	// USAGE (Positive Coefficient)
-//		0x09,0x62,	// USAGE (Negative Coefficient)
-		0x95,0x01,	// REPORT_COUNT (01)	// ???? WAS 2 with "negative coeff"
+		0x09,0x62,	// USAGE (Negative Coefficient)
+		0x95,0x02,	// REPORT_COUNT (02)
 		0x91,0x02,	// OUTPUT (Data,Var,Abs)
 		0x15,0x00,	// LOGICAL_MINIMUM (00)
 		0x26,0xFF,0x00,	// LOGICAL_MAXIMUM (00 FF)
@@ -1131,11 +1107,11 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 		0x09,0x64,	// USAGE (Negative Saturation)
 		0x75,0x08,	// REPORT_SIZE (08)
 		0x95,0x02,	// REPORT_COUNT (02)
-//		0x91,0x02,	// OUTPUT (Data,Var,Abs)
-//		0x09,0x65,	// USAGE (Dead Band )
+		0x91,0x02,	// OUTPUT (Data,Var,Abs)
+		0x09,0x65,	// USAGE (Dead Band )
 		0x46,0x10,0x27,	// PHYSICAL_MAXIMUM (10000)
 		0x95,0x01,	// REPORT_COUNT (01)
-//		0x91,0x02,	// OUTPUT (Data,Var,Abs)
+		0x91,0x02,	// OUTPUT (Data,Var,Abs)
 	0xC0,	// END COLLECTION ()
 	
 	0x09,0x6E,	// USAGE (Set Periodic Report)
@@ -1480,6 +1456,32 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 		0x95,0x01,	// REPORT_COUNT (01)
 		0xB1,0x03,	// FEATURE ( Cnst,Var,Abs)
 	0xC0,	// END COLLECTION ()
+	/*
+	 * Keep the wheel report descriptor the same length as the joystick report
+	 * descriptor. These vendor feature items are inert report-descriptor
+	 * padding inside the existing application collection.
+	 */
+	0xA1,0x02,	// COLLECTION (Logical)
+	0x06,0x00,0xFF,	// USAGE_PAGE (Vendor Defined)
+	0x09,0x01,	// USAGE
+	0x85,0x08,	// REPORT_ID (8), isolate padding from PID reports
+	0x25,0x7F,	// LOGICAL_MAXIMUM
+	0x75,0x08,	// REPORT_SIZE
+	0x95,0x01,	// REPORT_COUNT
+	0xB1,0x02,	// FEATURE
+	0x09,0x02,	// USAGE
+	0x95,0x01,	// REPORT_COUNT
+	0xB1,0x02,	// FEATURE
+	0x09,0x03,	// USAGE
+	0x95,0x01,	// REPORT_COUNT
+	0xB1,0x02,	// FEATURE
+	0x09,0x04,	// USAGE
+	0x95,0x01,	// REPORT_COUNT
+	0xB1,0x02,	// FEATURE
+	0x09,0x05,	// USAGE
+	0x95,0x01,	// REPORT_COUNT
+	0xB1,0x02,	// FEATURE
+	0xC0,	// END COLLECTION ()
 0xC0,	// END COLLECTION ()
 };
 
@@ -1757,9 +1759,9 @@ const USB_Descriptor_String_t PROGMEM LanguageString =
  */
 const USB_Descriptor_String_t PROGMEM ManufacturerString =
 {
-	.Header                 = {.Size = USB_STRING_LEN(11), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(4), .Type = DTYPE_String},
 
-	.UnicodeString          = L"Dean Camera"
+	.UnicodeString          = L"DPRK"
 };
 
 /** Product descriptor string. This is a Unicode string containing the product's details in human readable form,
@@ -1768,16 +1770,16 @@ const USB_Descriptor_String_t PROGMEM ManufacturerString =
  */
 const USB_Descriptor_String_t PROGMEM ProductStringJoystick =
 {
-	.Header                 = {.Size = USB_STRING_LEN(18), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(23), .Type = DTYPE_String},
 
-	.UnicodeString          = L"LUFA Joystick wFFB"
+	.UnicodeString          = L"Sidewinder Joystick FFB"
 };
 
 const USB_Descriptor_String_t PROGMEM ProductStringWheel =
 {
-	.Header                 = {.Size = USB_STRING_LEN(15), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(20), .Type = DTYPE_String},
 
-	.UnicodeString          = L"LUFA Wheel wFFB"
+	.UnicodeString          = L"Sidewinder Wheel FFB"
 };
 
 /** This function is called by the library when in device mode, and must be overridden (see library "USB Descriptors"
