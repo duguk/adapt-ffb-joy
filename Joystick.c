@@ -320,9 +320,9 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 		outReportData->Button = ((sw_report[4] & 0x7F) << 2) + ((sw_report[3] & 0xC0) >> 6);
 		outReportData->Hat = sw_report[2] >> 4;
 		outReportData->Rz = (sw_report[3] & 0x3f) - 32;
-		outReportData->Accelerator = ((sw_report[5] & 0x3f) << 1) + (sw_report[4] >> 7);
+		outReportData->Throttle = ((sw_report[5] & 0x3f) << 1) + (sw_report[4] >> 7);
 		if (sw_report[5] & 0x20)
-			outReportData->Accelerator |= 0b11000000;
+			outReportData->Throttle |= 0b11000000;
 
 		outReportData->Z = 0;	// not used at the moment
 
@@ -372,7 +372,7 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 	outReportData->Rz = prev_joystick_data.position & 0x7F;
 	outReportData->Rx = prev_joystick_data.position & 0xFF;
 	outReportData->Ry = prev_joystick_data.position & 0xFF;
-	outReportData->Accelerator = prev_joystick_data.position & 0xFF;
+	outReportData->Throttle = prev_joystick_data.position & 0xFF;
 	outReportData->Slider = prev_joystick_data.position & 0xFF;
 	outReportData->Hat = prev_joystick_data.position % 8;
 */

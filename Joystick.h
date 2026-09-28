@@ -45,6 +45,7 @@ typedef struct
 	int8_t  Rz, Rx, Ry;
 	uint8_t  Brake;
 	uint8_t  Accelerator;
+	int8_t   Throttle;
 	uint16_t Button;
 	uint8_t Hat;
 	} USB_JoystickReport_Data_t;
