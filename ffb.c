@@ -301,6 +301,14 @@ void FfbOnUsbData(uint8_t *data, uint16_t len)
 		if (data[1] != 0xff && (data[1] == 0 || data[1] > MAX_EFFECTS))
 			return;
 	}
+	/* Effect block 1 is never allocated: it is the device's built-in
+	 * centering spring, which is left to the Force button.  Linux treats it
+	 * as an autocenter effect because allocation starts at 2, so drop host
+	 * writes to it rather than forwarding an uninitialized effect. */
+	if (data[0] <= 7 || data[0] == 10 || data[0] == 11 || data[0] == 14) {
+		if (data[1] == 1)
+			return;
+	}
 	// Parse incoming USB data and convert it to MIDI data for the joystick
 	LEDs_SetAllLEDs(LEDS_ALL_LEDS);
 
@@ -374,6 +382,7 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 		effect->usb_fadeTime = USB_DURATION_INFINITE;
 		effect->usb_gain = 0xFF;
 		effect->usb_offset = 0;
+		effect->usb_constantMagnitude = 0;
 		effect->usb_attackLevel = 0xFF;
 		effect->usb_fadeLevel = 0xFF;
 		effect->custom_data_offset = 0;
@@ -883,6 +892,9 @@ void FfbEnableSines(uint8_t inEnable)
 
 void FfbEnableEffectId(uint8_t inId, uint8_t inEnable)
 	{
+	if (inId == 0 || inId > MAX_EFFECTS)
+		return;
+
 	gDisabledEffects.effectId[inId] = !inEnable;
 
 	if (gEffectStates[inId].state == MEffectState_Playing)

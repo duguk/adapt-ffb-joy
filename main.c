@@ -39,6 +39,10 @@
 
 #include "Descriptors.h"
 
+/* Result of the last Create New Effect request.  The host fetches it with a
+ * separate GET_REPORT of the PID Block Load feature report. */
+static USB_FFBReport_PIDBlockLoad_Feature_Data_t pidBlockLoadData;
+
 void CDC1_Task(void);
 
 /** Contains the current baud rate and other settings of the first virtual serial port. While this demo does not use
@@ -151,6 +155,7 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 
 	/* Reset line encoding baud rates so that the host knows to send new values */
 	LineEncoding1.BaudRateBPS = 0;
+	gDebugPortOpen = 0;
 
 	/* Indicate endpoint configuration success or failure */
 	LEDs_SetAllLEDs(ConfigSuccess ? LEDS_NO_LEDS : LEDS_ALL_LEDS);
@@ -199,20 +204,16 @@ void EVENT_USB_Device_ControlRequest(void)
 				{
 				LEDs_SetAllLEDs(LEDS_ALL_LEDS);
 
-				/*if (USB_ControlRequest.wValue == 0x0306)
+				if (USB_ControlRequest.wValue == 0x0306)
 					{	// Feature 2: PID Block Load Feature Report
-					LogTextP(PSTR("GetReport PID Block Load Feature"));
 					_delay_us(500);	// Windows needs this delay to register the below feature report correctly
-					USB_FFBReport_PIDBlockLoad_Feature_Data_t featureData;
-					FfbOnPIDBlockLoad(&featureData);
 					Endpoint_ClearSETUP();
 
 					// Write the report data to the control endpoint
-					Endpoint_Write_Control_Stream_LE(&featureData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
+					Endpoint_Write_Control_Stream_LE(&pidBlockLoadData, sizeof(pidBlockLoadData));
 					Endpoint_ClearOUT();
 					}
-				else */
-				if (USB_ControlRequest.wValue == 0x0307)
+				else if (USB_ControlRequest.wValue == 0x0307)
 					{	// Feature 3: PID Pool Feature Report
 					USB_FFBReport_PIDPool_Feature_Data_t featureData;
 					FfbOnPIDPool(&featureData);
@@ -284,14 +285,10 @@ void EVENT_USB_Device_ControlRequest(void)
 					_delay_us(500);	// Windows does not like to be answered too quickly
 //					LogData("    => SetReport CreateNewEffect:", USB_ControlRequest.wValue & 0xFF, data, len);
 
-					USB_FFBReport_PIDBlockLoad_Feature_Data_t pidBlockLoadData;
+					/* The status stage has already completed, so the result
+					 * cannot be returned here.  Keep it for the following
+					 * GET_REPORT of the PID Block Load feature report. */
 					FfbOnCreateNewEffect((USB_FFBReport_CreateNewEffect_Feature_Data_t*) data, &pidBlockLoadData);
-
-					Endpoint_ClearSETUP();
-
-					// Write the report data to the control endpoint
-					Endpoint_Write_Control_Stream_LE(&pidBlockLoadData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
-					Endpoint_ClearOUT();
 					}
 				else if (USB_ControlRequest.wValue == 0x0306)
 					{	// Feature 1
@@ -350,6 +347,8 @@ void EVENT_USB_Device_ControlRequest(void)
 			{
 				Endpoint_ClearSETUP();
 				Endpoint_ClearStatusStage();
+
+				gDebugPortOpen = (USB_ControlRequest.wValue & CDC_CONTROL_LINE_OUT_DTR) != 0;
 			}
 
 			break;
@@ -586,6 +585,9 @@ void DoCommandSimulateUsbReceive(uint8_t *data, uint16_t len);
 
 void ProcessCommandDataFromCOMSerial(char command, char data);
 
+// Size of the buffer collecting a command's data from COM serial
+#define SERIAL_COMMAND_BUFFER_SIZE 40
+
 volatile static uint8_t gOngoingSerialCommandDataLen = 0; // expected length of actual command data
 volatile static char gOngoingSerialCommand = '\0';
 
@@ -642,6 +644,14 @@ void ProcessDataFromCOMSerial(char data)
 		gOngoingSerialCommandParameterPos = 2;
 		gOngoingSerialCommandDataLen += value;
 
+		// Drop commands that would not fit the command buffer (e.g. garbage)
+		if (gOngoingSerialCommandDataLen == 0 ||
+				gOngoingSerialCommandDataLen > SERIAL_COMMAND_BUFFER_SIZE)
+			{
+			gOngoingSerialCommand = 0;
+			return;
+			}
+
 		if (DoDebug(DEBUG_DETAIL))
 			{
 			LogTextP(PSTR("Expecting data len="));
@@ -678,7 +688,6 @@ void ProcessCommandDataFromCOMSerial(char command, char data)
 		}
 
 	// Reserve a buffer for sending raw-data from COM serial to USB/MIDI handling
-#define SERIAL_COMMAND_BUFFER_SIZE 40
 	static char SERIAL_COMMAND_BUFFER[SERIAL_COMMAND_BUFFER_SIZE];
 	volatile static uint8_t gOngoingSerialCommandDataPos = 0; // writer offset of command data in SERIAL_COMMAND_BUFFER
 

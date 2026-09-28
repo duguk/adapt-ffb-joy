@@ -244,7 +244,7 @@ typedef struct
 	uint8_t constants;
 	uint8_t triangles;
 	uint8_t sines;
-	uint8_t effectId[MAX_EFFECTS];
+	uint8_t effectId[MAX_EFFECTS+1];	// indexed by effect block index 1..MAX_EFFECTS
 	} TDisabledEffectTypes;
 
 extern volatile TDisabledEffectTypes gDisabledEffects;
@@ -306,6 +306,7 @@ typedef struct {
 	// These are used to calculate effects of USB gain to MIDI data
 	uint8_t usb_gain, usb_offset, usb_attackLevel, usb_fadeLevel;
 	uint8_t usb_magnitude;
+	int16_t usb_constantMagnitude;	// signed constant force level, re-projected when the direction changes
 	uint8_t custom_data[12];
 	uint8_t custom_data_offset;
 	uint8_t custom_sample_count;

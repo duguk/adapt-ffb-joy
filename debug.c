@@ -44,6 +44,11 @@ volatile uint8_t gDebugMode = 2; // set this higher if debugging e.g. at startup
 // Internal buffer for sending debug data to USB COM-port
 volatile char debug_buffer[DEBUG_BUFFER_SIZE];
 volatile uint16_t debug_buffer_used = 0;
+
+// Set while a host program has the debug COM-port open (CDC DTR line).
+// Without a reader the host never polls the endpoint, and each flush would
+// stall the joystick reports until the endpoint times out.
+volatile uint8_t gDebugPortOpen = 0;
 #endif
 
 void LogSendData(uint8_t *data, uint16_t len)
@@ -231,6 +236,9 @@ void FlushDebugBuffer(void)
 		return;
 
 	debug_buffer_used = 0;
+
+	if (!gDebugPortOpen)
+		return;	// nobody is listening - discard
 
 	// Select the Serial Tx Endpoint
 	Endpoint_SelectEndpoint(CDC1_TX_EPNUM);

@@ -883,15 +883,21 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 		0x85,0x02,	// REPORT_ID (02)
 		0x09,0x9F,	// USAGE (Device Paused)
 		0x09,0xA0,	// USAGE (Actuators Enabled)
-		0x09,0xA4,	// USAGE (Safety Switch)
-		0x09,0xA5,	// USAGE (Actuator Override Switch)
-		0x09,0xA6,	// USAGE (Actuator Power)
 		0x15,0x00,	// LOGICAL_MINIMUM (00)
 		0x25,0x01,	// LOGICAL_MINIMUM (01)
 		0x35,0x00,	// PHYSICAL_MINIMUM (00)
 		0x45,0x01,	// PHYSICAL_MAXIMUM (01)
 		0x75,0x01,	// REPORT_SIZE (01)
-		0x95,0x05,	// REPORT_COUNT (05)
+		0x95,0x02,	// REPORT_COUNT (02)
+		0x81,0x02,	// INPUT (Data,Var,Abs)
+		/* Status bit 2 would be Safety Switch, which hosts expose as an
+		 * extra joystick button (Linux BTN_DEAD).  The wheel has no such
+		 * switch, so keep the bit as padding. */
+		0x95,0x01,	// REPORT_COUNT (01)
+		0x81,0x03,	// INPUT (Constant,Var,Abs)
+		0x09,0xA5,	// USAGE (Actuator Override Switch)
+		0x09,0xA6,	// USAGE (Actuator Power)
+		0x95,0x02,	// REPORT_COUNT (02)
 		0x81,0x02,	// INPUT (Data,Var,Abs)
 		0x95,0x03,	// REPORT_COUNT (03)
 		0x81,0x03,	// INPUT (Constant,Var,Abs)
@@ -1476,9 +1482,6 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 	0x95,0x01,	// REPORT_COUNT
 	0xB1,0x02,	// FEATURE
 	0x09,0x04,	// USAGE
-	0x95,0x01,	// REPORT_COUNT
-	0xB1,0x02,	// FEATURE
-	0x09,0x05,	// USAGE
 	0x95,0x01,	// REPORT_COUNT
 	0xB1,0x02,	// FEATURE
 	0xC0,	// END COLLECTION ()

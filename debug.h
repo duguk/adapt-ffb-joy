@@ -40,6 +40,9 @@ extern const uint8_t DEBUG_DETAIL;
 
 extern volatile uint8_t gDebugMode;
 
+// Set while a host program has the debug COM-port open (CDC DTR line)
+extern volatile uint8_t gDebugPortOpen;
+
 // Returns true if debug settings contain all of the given attributes
 // (see above constants DEBUG_xxx).
 bool DoDebug(const uint8_t type);

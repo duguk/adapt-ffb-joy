@@ -127,21 +127,84 @@ void FfbwheelCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inDat
 
 uint8_t FfbwheelUsbToMidiEffectType(uint8_t usb_effect_type);
 
-/* Sidewinder wheel F1 parameter addresses. */
+/*
+ * Sidewinder wheel F1 parameter addresses.  An address is the position of the
+ * parameter in the effect's SysEx layout (the FFW_MIDI_Effect_* structs):
+ * the duration is 0, the direction 2, and each following field takes one
+ * address whether it is 7 or 14 bits wide.  The addresses therefore differ
+ * between effect types.
+ */
 #define FFW_MIDI_MODIFY_DURATION			0x00
-#define FFW_MIDI_MODIFY_ATTACK_LEVEL		0x03
-#define FFW_MIDI_MODIFY_ATTACK_TIME		0x04
-#define FFW_MIDI_MODIFY_MAGNITUDE			0x06
-#define FFW_MIDI_MODIFY_FADE_TIME			0x07
-#define FFW_MIDI_MODIFY_FADE_LEVEL			0x09
-#define FFW_MIDI_MODIFY_FORCE_DIRECTION	0x09
-#define FFW_MIDI_MODIFY_FREQUENCY			0x0a
-#define FFW_MIDI_MODIFY_OFFSET			0x0c
-#define FFW_MIDI_MODIFY_POSITIVE_COEFF		0x06
-#define FFW_MIDI_MODIFY_NEGATIVE_COEFF		0x03
-#define FFW_MIDI_MODIFY_DEVICE_GAIN		0x00
+#define FFW_MIDI_MODIFY_DEVICE_GAIN		0x00	// effect 0
 
-/* 0x7d is the factory maximum and 0x3e/0x3f is neutral. */
-#define FFW_AUTOCENTER_STRENGTH			32
+/* Constant force */
+#define FFW_MIDI_CONSTANT_ATTACK_LEVEL		0x04
+#define FFW_MIDI_CONSTANT_ATTACK_TIME		0x05
+#define FFW_MIDI_CONSTANT_MAGNITUDE		0x06
+#define FFW_MIDI_CONSTANT_FADE_TIME		0x07
+#define FFW_MIDI_CONSTANT_FADE_LEVEL		0x08
+#define FFW_MIDI_CONSTANT_FORCE_DIRECTION	0x09
+
+/* Periodic and ramp */
+#define FFW_MIDI_PERIODIC_PHASE			0x04
+#define FFW_MIDI_PERIODIC_ATTACK_LEVEL		0x05
+#define FFW_MIDI_PERIODIC_ATTACK_TIME		0x06
+#define FFW_MIDI_PERIODIC_MAGNITUDE		0x07
+#define FFW_MIDI_PERIODIC_FADE_TIME		0x08
+#define FFW_MIDI_PERIODIC_FADE_LEVEL		0x09
+#define FFW_MIDI_PERIODIC_FREQUENCY		0x0a
+#define FFW_MIDI_PERIODIC_OFFSET			0x0b
+
+/* Spring, damper and inertia */
+#define FFW_MIDI_CONDITION_NEGATIVE_COEFF	0x03
+#define FFW_MIDI_CONDITION_POSITIVE_COEFF	0x06
+
+/* Friction */
+#define FFW_MIDI_FRICTION_COEFF			0x03
+
+/* ---- Tuning ----------------------------------------------------------------
+ *
+ * Forces are on a 0..127 scale, where 127 is the wheel's full force.
+ *
+ * *_STRENGTH_PERCENT scales every force of that effect type (after the
+ * effect's own gain).  Values above 100 boost weak effects, clipping at full
+ * force.
+ *
+ * *_MIN_FORCE lifts weak forces above the wheel's friction: any non-zero
+ * force is rescaled from 1..127 into MIN_FORCE..127, so full force stays the
+ * same and zero stays zero.  For springs, dampers, inertia and friction it
+ * applies to the coefficient instead (the force the effect would reach at
+ * full deflection or speed).  The device gain set by the game is applied by
+ * the wheel afterwards and also scales the minimum.
+ */
+#define FFW_CONSTANT_STRENGTH_PERCENT		100
+#define FFW_CONSTANT_MIN_FORCE			0
+
+/* Sine, square, triangle, sawtooth, ramp and (on Linux) rumble */
+#define FFW_PERIODIC_STRENGTH_PERCENT		100
+#define FFW_PERIODIC_MIN_FORCE			0
+
+/* Spring, damper, inertia and friction */
+#define FFW_CONDITION_STRENGTH_PERCENT		100
+#define FFW_CONDITION_MIN_FORCE		0
+
+/* Shortest periodic effect period in ms; shorter ones are slowed down to it.
+ * The motor cannot follow very fast waves and just makes noise (fftest's sine
+ * asks for 10 ms, i.e. 100 Hz).  0 leaves every period unchanged.  Linux
+ * rumble uses 50 ms, so values up to 50 leave rumble alone. */
+#define FFW_PERIODIC_MIN_PERIOD_MS		50
+
+/* Set to 1 to swap left and right for constant forces.  Linux defines
+ * direction 0x4000 as left, which turns the wheel left with the default 0. */
+#define FFW_CONSTANT_INVERT			0
+
+/* Periodic offset byte that gives no push.  The true neutral lies between
+ * 0x3e and 0x3f: very fast full-strength waves (e.g. fftest's 100 Hz sine)
+ * drift slowly left with 0x3e and right with 0x3f. */
+#define FFW_PERIODIC_OFFSET_ZERO		0x3e
+
+/* Self-centering strength when enabled by the Force button, as a percentage
+ * (0..100) of the wheel's factory centering spring. */
+#define FFW_AUTOCENTER_STRENGTH_PERCENT	75
 
 #endif // _FFB_WHEEL_

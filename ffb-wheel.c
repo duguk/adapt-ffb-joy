@@ -25,6 +25,7 @@
 
 #include <LUFA/Drivers/Board/LEDs.h>
 #include <util/delay.h>
+#include <avr/pgmspace.h>
 
 uint8_t FfbwheelUsbToMidiEffectType(uint8_t usb_effect_type)
 {
@@ -51,6 +52,70 @@ uint8_t FfbwheelUsbToMidiEffectType(uint8_t usb_effect_type)
 
 static void FfbwheelSendModify(uint8_t effectId, uint8_t address,
 	uint16_t value);
+static uint16_t FfbwheelEncode14(uint16_t value);
+
+/*
+ * Condition coefficients are 14-bit values centred on 0x2000.  The factory
+ * centering spring uses 0x3e80 for the negative side and 0x007d for the
+ * positive side, so a restoring force raises the negative value and lowers
+ * the positive one.
+ */
+#define FFW_COEFF_CENTRE		0x2000
+#define FFW_COEFF_NEGATIVE_MAX	0x3e80
+#define FFW_COEFF_POSITIVE_MAX	0x007d
+
+/*
+ * For effect parameters, only the high byte of each coefficient field is the
+ * coefficient (0x40 is no force, 0x7d/0x00 the factory strength).  The low
+ * byte behaves like a force limit: anything but the factory 0x00 (negative
+ * side) or 0x7d (positive side) adds a constant push, so that a damper drives
+ * a stationary wheel towards one end.
+ */
+#define FFW_COND_COEFF_ZERO		0x40
+#define FFW_COND_NEGATIVE_MAX		0x7d
+#define FFW_COND_POSITIVE_MAX		0x00
+#define FFW_COND_NEGATIVE_LIMIT	0x00
+#define FFW_COND_POSITIVE_LIMIT	0x7d
+
+/* sin() over one quadrant of the wheel's 128-step direction, scaled to 127. */
+static const uint8_t PROGMEM ffwQuarterSine[33] = {
+	0, 6, 12, 19, 25, 31, 37, 43, 49, 54, 60, 65, 71, 76, 81, 85,
+	90, 94, 98, 102, 106, 109, 112, 115, 117, 120, 122, 123, 125, 126, 126, 127,
+	127
+};
+
+/*
+ * The wheel only has the X axis.  Project a force along the given direction
+ * onto it, as Linux and DirectInput do: 0x20 (90 degrees) is the full force
+ * with a positive sign, 0x60 (270 degrees) the full force with a negative
+ * sign, and 0x00/0x40 have no X component.
+ */
+static int16_t FfbwheelProjectOnAxis(int16_t value, uint8_t direction)
+{
+	uint8_t d = direction & 0x7f;
+	uint8_t i = d & 0x3f;
+	if (i > 32)
+		i = 64 - i;
+
+	int16_t projected = ((int32_t)value * pgm_read_byte(&ffwQuarterSine[i])) / 127;
+	return (d < 0x40) ? projected : -projected;
+}
+
+/*
+ * The wheel's fade time is when the fade starts, measured from the start of
+ * the effect (the factory ramp uses the duration itself for "no fade"),
+ * whereas USB gives the length of the fade at the end of the effect.
+ */
+static uint16_t FfbwheelFadeStart(uint16_t duration, uint16_t fadeLength)
+{
+	if (duration == USB_DURATION_INFINITE)
+		return MIDI_DURATION_INFINITE;
+	if (fadeLength >= duration)
+		return 1;
+
+	uint16_t start = UsbUint16ToMidiUint14_Time(duration - fadeLength);
+	return start ? start : 1;
+}
 
 /*
  * The wheel's built-in centering spring uses a slightly different checksum
@@ -96,11 +161,17 @@ void FfbwheelEnableInterrupts(void)
 		0xf1 ,0x0b ,0x46 ,0x01 ,0x7d ,0x00,
 	};
 
+	const uint8_t startupFfbWheelData_2[] = {
+		0xf1, 0x10, 0x40, 0x00, 0x7f, 0x00,	/* full device gain */
+		0xf3, 0x6a	/* stop all */
+	};
+
     WaitMs(100);
 
 	FfbSendData(startupFfbWheelData_0, sizeof(startupFfbWheelData_0));
 	FfbSendData(startupFfbWheelData_1, sizeof(startupFfbWheelData_1));
-	FfbwheelSetAutoCenter(0);
+	FfbSendData(startupFfbWheelData_0, sizeof(startupFfbWheelData_0));
+	FfbSendData(startupFfbWheelData_2, sizeof(startupFfbWheelData_2));
 
 	WaitMs(100);
 	}
@@ -125,36 +196,40 @@ uint8_t FfbwheelDeviceControl(uint8_t usb_control)
 	return 1;
 }
 
+/*
+ * The centering spring is the wheel's built-in effect 1, which can be started
+ * and stopped like any other effect.  Never reset the wheel or stop all
+ * effects here: that would delete or stop the host's effects too, e.g. when
+ * the Force switch is turned off and on during a game.
+ */
 void FfbwheelSetAutoCenter(uint8_t enable)
 {
-	const uint8_t ac_reset[] = { 0xf3, 0x1d };
-	const uint8_t ac_disable[] = {
-		0xf1, 0x10, 0x40, 0x00, 0x7f, 0x00,
-		0xf3, 0x6a
-	};
-
 	if (!enable)
 		{
-		/* This is the original stop-all sequence. */
-		FfbSendData(ac_reset, sizeof(ac_reset));
-		FfbSendData(ac_disable, sizeof(ac_disable));
+		FfbwheelStopEffect(1);
 		return;
 		}
 
-	/* Reset first: reset clears the wheel's effect-1 parameters. */
-	FfbSendData(ac_reset, sizeof(ac_reset));
-
 	/*
-	 * Recreate the wheel's built-in spring setup, with a reduced coefficient
-	 * in both directions.  The two middle writes are the original saturation
-	 * and dead-band values and must remain present after the reset.
+	 * Rewrite the wheel's built-in spring setup, with a reduced coefficient
+	 * in both directions.  A reset (by the host or at startup) restores the
+	 * factory values.  The two middle writes are the original saturation and
+	 * dead-band values.
+	 *
+	 * Scale each factory coefficient's distance from the centre by the same
+	 * amount to keep centering equally strong both ways.
 	 */
-	uint8_t coefficient = 0x3e +
-		((0x7d - 0x3e) * FFW_AUTOCENTER_STRENGTH) / 127;
-	FfbwheelSendAutoCenterModify(0x43, (uint16_t)coefficient << 8);
+	uint16_t coefficient1 = FFW_COEFF_CENTRE +
+		((uint32_t)(FFW_COEFF_NEGATIVE_MAX - FFW_COEFF_CENTRE) *
+		FFW_AUTOCENTER_STRENGTH_PERCENT) / 100;
+	uint16_t coefficient2 = FFW_COEFF_CENTRE -
+		((uint32_t)(FFW_COEFF_CENTRE - FFW_COEFF_POSITIVE_MAX) *
+		FFW_AUTOCENTER_STRENGTH_PERCENT) / 100;
+	FfbwheelSendAutoCenterModify(0x43, FfbwheelEncode14(coefficient1));
 	FfbwheelSendAutoCenterModify(0x04, 0x4e3e);
 	FfbwheelSendAutoCenterModify(0x45, 0x2f3e);
-	FfbwheelSendAutoCenterModify(0x46, coefficient);
+	FfbwheelSendAutoCenterModify(0x46, FfbwheelEncode14(coefficient2));
+	FfbwheelStartEffect(1);
 }
 
 const uint8_t* FfbwheelGetSysExHeader(uint8_t* hdr_len)
@@ -239,6 +314,29 @@ static uint8_t FfbwheelClamp7(int16_t value)
 	return (uint8_t)value;
 }
 
+/* Apply an effect type's strength and minimum force (see the tuning section
+ * of ffb-wheel.h) to a 0..127 force. */
+static uint8_t FfbwheelShapeForce(uint8_t force, uint16_t percent,
+	uint8_t minimum)
+{
+	uint32_t scaled = ((uint32_t)force * percent) / 100;
+
+	if (scaled == 0)
+		return 0;
+	if (scaled > 127)
+		scaled = 127;
+	return minimum + (scaled * (127 - minimum)) / 127;
+}
+
+static int16_t FfbwheelShapeSignedForce(int16_t force, uint16_t percent,
+	uint8_t minimum)
+{
+	if (force < 0)
+		return -(int16_t)FfbwheelShapeForce(FfbwheelClamp7(-force), percent,
+			minimum);
+	return FfbwheelShapeForce(FfbwheelClamp7(force), percent, minimum);
+}
+
 static uint16_t FfbwheelEncode14(uint16_t value)
 {
 	/* Keep both bytes MIDI data bytes (the wheel stores 14-bit values as
@@ -276,7 +374,7 @@ void FfbwheelSetEnvelope(
 	uint8_t attackLevel = CalcGain(data->attackLevel, effect->usb_gain);
 	uint8_t fadeLevel = CalcGain(data->fadeLevel, effect->usb_gain);
 	uint16_t attackTime = UsbUint16ToMidiUint14_Time(data->attackTime);
-	uint16_t fadeTime = UsbUint16ToMidiUint14_Time(data->fadeTime);
+	uint16_t fadeTime = FfbwheelFadeStart(effect->usb_duration, data->fadeTime);
 	FFW_MIDI_Effect_Common_t* common = (FFW_MIDI_Effect_Common_t*)effect->data;
 
 	effect->usb_attackLevel = data->attackLevel;
@@ -286,25 +384,33 @@ void FfbwheelSetEnvelope(
 	if (common->waveForm == 0x06) {
 		FFW_MIDI_Effect_ConstantForce_t* midi_data =
 			(FFW_MIDI_Effect_ConstantForce_t*)effect->data;
+		attackLevel = FfbwheelShapeForce(attackLevel,
+			FFW_CONSTANT_STRENGTH_PERCENT, FFW_CONSTANT_MIN_FORCE);
+		fadeLevel = FfbwheelShapeForce(fadeLevel,
+			FFW_CONSTANT_STRENGTH_PERCENT, FFW_CONSTANT_MIN_FORCE);
 		FfbwheelSetModify7(effect, &midi_data->attackLevel, eid,
-			FFW_MIDI_MODIFY_ATTACK_LEVEL, attackLevel);
+			FFW_MIDI_CONSTANT_ATTACK_LEVEL, attackLevel);
 		FfbwheelSetModify14(effect, &midi_data->attackTime, eid,
-			FFW_MIDI_MODIFY_ATTACK_TIME, attackTime);
+			FFW_MIDI_CONSTANT_ATTACK_TIME, attackTime);
 		FfbwheelSetModify14(effect, &midi_data->fadeTime, eid,
-			FFW_MIDI_MODIFY_FADE_TIME, fadeTime);
-		/* Address 0x09 is the wheel's constant-force direction. */
-		midi_data->fadeLevel = fadeLevel;
+			FFW_MIDI_CONSTANT_FADE_TIME, fadeTime);
+		FfbwheelSetModify7(effect, &midi_data->fadeLevel, eid,
+			FFW_MIDI_CONSTANT_FADE_LEVEL, fadeLevel);
 	} else {
 		FFW_MIDI_Effect_Periodic_Ramp_t* midi_data =
 			(FFW_MIDI_Effect_Periodic_Ramp_t*)effect->data;
+		attackLevel = FfbwheelShapeForce(attackLevel,
+			FFW_PERIODIC_STRENGTH_PERCENT, FFW_PERIODIC_MIN_FORCE);
+		fadeLevel = FfbwheelShapeForce(fadeLevel,
+			FFW_PERIODIC_STRENGTH_PERCENT, FFW_PERIODIC_MIN_FORCE);
 		FfbwheelSetModify7(effect, &midi_data->attackLevel, eid,
-			FFW_MIDI_MODIFY_ATTACK_LEVEL, attackLevel);
+			FFW_MIDI_PERIODIC_ATTACK_LEVEL, attackLevel);
 		FfbwheelSetModify14(effect, &midi_data->attackTime, eid,
-			FFW_MIDI_MODIFY_ATTACK_TIME, attackTime);
+			FFW_MIDI_PERIODIC_ATTACK_TIME, attackTime);
 		FfbwheelSetModify14(effect, &midi_data->fadeTime, eid,
-			FFW_MIDI_MODIFY_FADE_TIME, fadeTime);
+			FFW_MIDI_PERIODIC_FADE_TIME, fadeTime);
 		FfbwheelSetModify7(effect, &midi_data->fadeLevel, eid,
-			FFW_MIDI_MODIFY_FADE_LEVEL, fadeLevel);
+			FFW_MIDI_PERIODIC_FADE_LEVEL, fadeLevel);
 	}
 }
 
@@ -327,26 +433,38 @@ void FfbwheelSetCondition(
 		if (coefficient < 0)
 			coefficient = -coefficient;
 		coefficient = (coefficient * effect->usb_gain) / 255;
+		coefficient = FfbwheelShapeSignedForce(coefficient,
+			FFW_CONDITION_STRENGTH_PERCENT, FFW_CONDITION_MIN_FORCE);
+		/* Like the other condition coefficients, 0x40 is no friction and
+		 * lower values push the wheel along its motion instead of resisting
+		 * it (the factory friction effect uses 0x7e). */
 		FfbwheelSetModify7(effect, &midi_data->coefficient, eid,
-			FFW_MIDI_MODIFY_POSITIVE_COEFF, FfbwheelClamp7(coefficient / 2));
+			FFW_MIDI_FRICTION_COEFF, FfbwheelClamp7(FFW_COND_COEFF_ZERO +
+			(coefficient * (FFW_COND_NEGATIVE_MAX - FFW_COND_COEFF_ZERO)) / 127));
 	} else if (data->parameterBlockOffset == 0) {
 		FFW_MIDI_Effect_Spring_Inertia_Damper_t* midi_data =
 			(FFW_MIDI_Effect_Spring_Inertia_Damper_t*)effect->data;
-		int16_t positiveCoefficient =
-			(data->positiveCoefficient * effect->usb_gain) / 255;
-		int16_t negativeCoefficient =
-			(data->negativeCoefficient * effect->usb_gain) / 255;
-		uint8_t positive = FfbwheelClamp7(64 + positiveCoefficient / 2);
-		uint8_t negative = FfbwheelClamp7(63 - negativeCoefficient / 2);
-		/* Condition coefficients are 7-bit values in the MSB of the
-		 * wheel's 14-bit F1 parameter. */
-		uint16_t positiveValue = (uint16_t)positive << 8;
-		uint16_t negativeValue = (uint16_t)negative << 8;
+		int16_t positiveCoefficient = FfbwheelShapeSignedForce(
+			(data->positiveCoefficient * effect->usb_gain) / 255,
+			FFW_CONDITION_STRENGTH_PERCENT, FFW_CONDITION_MIN_FORCE);
+		int16_t negativeCoefficient = FfbwheelShapeSignedForce(
+			(data->negativeCoefficient * effect->usb_gain) / 255,
+			FFW_CONDITION_STRENGTH_PERCENT, FFW_CONDITION_MIN_FORCE);
+		uint8_t positive = FfbwheelClamp7(FFW_COND_COEFF_ZERO -
+			(positiveCoefficient *
+			(FFW_COND_COEFF_ZERO - FFW_COND_POSITIVE_MAX)) / 127);
+		uint8_t negative = FfbwheelClamp7(FFW_COND_COEFF_ZERO +
+			(negativeCoefficient *
+			(FFW_COND_NEGATIVE_MAX - FFW_COND_COEFF_ZERO)) / 127);
+		uint16_t positiveValue =
+			((uint16_t)positive << 8) | FFW_COND_POSITIVE_LIMIT;
+		uint16_t negativeValue =
+			((uint16_t)negative << 8) | FFW_COND_NEGATIVE_LIMIT;
 
 		FfbwheelSetModify14(effect, &midi_data->positiveCoefficient, eid,
-			FFW_MIDI_MODIFY_POSITIVE_COEFF, positiveValue);
+			FFW_MIDI_CONDITION_POSITIVE_COEFF, positiveValue);
 		FfbwheelSetModify14(effect, &midi_data->negativeCoefficient, eid,
-			FFW_MIDI_MODIFY_NEGATIVE_COEFF, negativeValue);
+			FFW_MIDI_CONDITION_NEGATIVE_COEFF, negativeValue);
 	}
 }
 
@@ -357,50 +475,67 @@ void FfbwheelSetPeriodic(
 	uint8_t eid = data->effectBlockIndex;
 	FFW_MIDI_Effect_Periodic_Ramp_t* midi_data =
 		(FFW_MIDI_Effect_Periodic_Ramp_t*)effect->data;
-	uint8_t magnitude = CalcGain(data->magnitude, effect->usb_gain);
-	int16_t offset = 0x3e + data->offset / 2;
+	uint8_t magnitude = FfbwheelShapeForce(
+		CalcGain(data->magnitude, effect->usb_gain),
+		FFW_PERIODIC_STRENGTH_PERCENT, FFW_PERIODIC_MIN_FORCE);
+	int16_t offset = FFW_PERIODIC_OFFSET_ZERO +
+		((int32_t)(data->offset / 2) * FFW_PERIODIC_STRENGTH_PERCENT) / 100;
 	uint16_t phase14 = ((uint16_t)data->phase * 0x3fff) / 0xff;
 	uint16_t phase = FfbwheelEncode14(phase14);
-	uint16_t frequency = UsbUint16ToMidiUint14_Time(data->period);
+	uint16_t period = data->period;
+	if (period < FFW_PERIODIC_MIN_PERIOD_MS)
+		period = FFW_PERIODIC_MIN_PERIOD_MS;
+	uint16_t frequency = UsbUint16ToMidiUint14_Time(period);
 
 	effect->usb_magnitude = data->magnitude;
 	effect->usb_offset = (uint8_t)data->offset;
 
-	FfbwheelSetModify14(effect, &midi_data->phase, eid, 0x02, phase);
+	FfbwheelSetModify14(effect, &midi_data->phase, eid,
+		FFW_MIDI_PERIODIC_PHASE, phase);
 	FfbwheelSetModify7(effect, &midi_data->magnitude, eid,
-		FFW_MIDI_MODIFY_MAGNITUDE, magnitude);
+		FFW_MIDI_PERIODIC_MAGNITUDE, magnitude);
 	FfbwheelSetModify14(effect, &midi_data->frequency, eid,
-		FFW_MIDI_MODIFY_FREQUENCY, frequency);
+		FFW_MIDI_PERIODIC_FREQUENCY, frequency);
 	FfbwheelSetModify7(effect, &midi_data->offset, eid,
-		FFW_MIDI_MODIFY_OFFSET, FfbwheelClamp7(offset));
+		FFW_MIDI_PERIODIC_OFFSET, FfbwheelClamp7(offset));
+}
+
+/*
+ * The wheel ignores the effect direction for constant forces.  It stores
+ * magnitude as a 7-bit value with the sign in a separate byte (0x00 turns the
+ * wheel left, 0x7f right), so project the level onto the wheel's axis here.
+ * Linux puts the sign in the direction and always sends a positive level.
+ */
+static void FfbwheelUpdateConstantForce(uint8_t effectId,
+	volatile TEffectState* effect)
+{
+	FFW_MIDI_Effect_ConstantForce_t* midi_data =
+		(FFW_MIDI_Effect_ConstantForce_t*)effect->data;
+	int16_t force = FfbwheelProjectOnAxis(effect->usb_constantMagnitude,
+		midi_data->common.direction);
+	uint8_t direction = FFW_CONSTANT_INVERT ? 0x7f : 0x00;
+
+	if (force < 0) {
+		force = -force;
+		direction ^= 0x7f;
+	}
+	if (force > 255)
+		force = 255;
+
+	FfbwheelSetModify7(effect, &midi_data->magnitude, effectId,
+		FFW_MIDI_CONSTANT_MAGNITUDE, FfbwheelShapeForce(
+		CalcGain((uint8_t)force, effect->usb_gain),
+		FFW_CONSTANT_STRENGTH_PERCENT, FFW_CONSTANT_MIN_FORCE));
+	FfbwheelSetModify7(effect, &midi_data->forceDirection, effectId,
+		FFW_MIDI_CONSTANT_FORCE_DIRECTION, direction);
 }
 
 void FfbwheelSetConstantForce(
 	USB_FFBReport_SetConstantForce_Output_Data_t* data,
 	volatile TEffectState* effect)
 {
-	uint8_t magnitude;
-	uint8_t direction;
-	int16_t absoluteMagnitude;
-
-	/* The wheel stores magnitude as a 7-bit value and direction separately. */
-	if (data->magnitude < 0) {
-		absoluteMagnitude = -(int16_t)data->magnitude;
-		magnitude = CalcGain((uint8_t)absoluteMagnitude, effect->usb_gain);
-		direction = 0x7f;
-	} else {
-		absoluteMagnitude = data->magnitude;
-		magnitude = CalcGain((uint8_t)absoluteMagnitude, effect->usb_gain);
-		direction = 0x00;
-	}
-
-	FFW_MIDI_Effect_ConstantForce_t* midi_data =
-		(FFW_MIDI_Effect_ConstantForce_t*)effect->data;
-	effect->usb_magnitude = (uint8_t)(data->magnitude < 0 ? -(data->magnitude + 1) : data->magnitude);
-	FfbwheelSetModify7(effect, &midi_data->magnitude, data->effectBlockIndex,
-		FFW_MIDI_MODIFY_MAGNITUDE, magnitude);
-	FfbwheelSetModify7(effect, &midi_data->forceDirection, data->effectBlockIndex,
-		FFW_MIDI_MODIFY_FORCE_DIRECTION, direction);
+	effect->usb_constantMagnitude = data->magnitude;
+	FfbwheelUpdateConstantForce(data->effectBlockIndex, effect);
 }
 
 void FfbwheelSetCustomSample(uint8_t effectId,
@@ -419,14 +554,18 @@ void FfbwheelSetCustomSample(uint8_t effectId,
 		absoluteSample = sample;
 		direction = 0x00;
 	}
+	if (FFW_CONSTANT_INVERT)
+		direction ^= 0x7f;
 	if (absoluteSample > 127)
 		absoluteSample = 127;
-	magnitude = CalcGain((uint8_t)(absoluteSample * 2), effect->usb_gain);
+	magnitude = FfbwheelShapeForce(
+		CalcGain((uint8_t)(absoluteSample * 2), effect->usb_gain),
+		FFW_CONSTANT_STRENGTH_PERCENT, FFW_CONSTANT_MIN_FORCE);
 
 	FfbwheelSetModify7(effect, &midi_data->magnitude, effectId,
-		FFW_MIDI_MODIFY_MAGNITUDE, magnitude);
+		FFW_MIDI_CONSTANT_MAGNITUDE, magnitude);
 	FfbwheelSetModify7(effect, &midi_data->forceDirection, effectId,
-		FFW_MIDI_MODIFY_FORCE_DIRECTION, direction);
+		FFW_MIDI_CONSTANT_FORCE_DIRECTION, direction);
 }
 
 void FfbwheelSetRampForce(
@@ -439,17 +578,21 @@ void FfbwheelSetRampForce(
 	int16_t start = data->start;
 	int16_t end = data->end;
 	int16_t midpoint = (start + end) / 2;
-	uint8_t magnitude = CalcGain((uint8_t)(end > start ? end - start : start - end),
-		effect->usb_gain);
-	uint8_t offset = FfbwheelClamp7(0x3e + midpoint / 2);
+	uint8_t magnitude = FfbwheelShapeForce(
+		CalcGain((uint8_t)(end > start ? end - start : start - end),
+		effect->usb_gain),
+		FFW_PERIODIC_STRENGTH_PERCENT, FFW_PERIODIC_MIN_FORCE);
+	uint8_t offset = FfbwheelClamp7(FFW_PERIODIC_OFFSET_ZERO +
+		((int32_t)(midpoint / 2) * FFW_PERIODIC_STRENGTH_PERCENT) / 100);
 
 	FfbwheelSetModify7(effect, &midi_data->magnitude, eid,
-		FFW_MIDI_MODIFY_MAGNITUDE, magnitude);
+		FFW_MIDI_PERIODIC_MAGNITUDE, magnitude);
 	FfbwheelSetModify7(effect, &midi_data->offset, eid,
-		FFW_MIDI_MODIFY_OFFSET, offset);
+		FFW_MIDI_PERIODIC_OFFSET, offset);
 
 	/* A descending ramp is the same wheel waveform with the opposite phase. */
-	FfbwheelSetModify14(effect, &midi_data->phase, eid, 0x02,
+	FfbwheelSetModify14(effect, &midi_data->phase, eid,
+		FFW_MIDI_PERIODIC_PHASE,
 		(end >= start) ? 0x0000 : 0x2000);
 }
 
@@ -477,12 +620,22 @@ int FfbwheelSetEffect(
 		(FFW_MIDI_Effect_Common_t*)e->data;
 
 	/* The wheel has one direction byte.  HID direction is a full circle in
-	 * 256 steps, while the wheel uses 128 steps. */
+	 * 180 steps, while the wheel uses 128 steps.  Without a direction, a
+	 * constant force acts along the wheel's axis. */
 	e->usb_gain = data->gain;
 	if (data->enableAxis & 0x04)
-		common->direction = data->directionX >> 1;
+		common->direction =
+			(((uint16_t)data->directionX * 128 + 90) / 180) & 0x7f;
+	else if (data->effectType == USB_EFFECT_CONSTANT)
+		common->direction = 0x20;
 	else
 		common->direction = 0x40;
+
+	/* The wheel's fade start depends on the duration, which may have
+	 * changed.  Without an envelope, the fade starts at the end. */
+	uint16_t fadeLength = (e->usb_fadeTime == USB_DURATION_INFINITE) ?
+		0 : e->usb_fadeTime;
+	uint16_t fadeTime = FfbwheelFadeStart(e->usb_duration, fadeLength);
 
 	switch (data->effectType)
 	{
@@ -493,6 +646,10 @@ int FfbwheelSetEffect(
 	case USB_EFFECT_SAWTOOTHUP:
 	case USB_EFFECT_RAMP:
 	{
+		FFW_MIDI_Effect_Periodic_Ramp_t* midi_data =
+			(FFW_MIDI_Effect_Periodic_Ramp_t*)e->data;
+		FfbwheelSetModify14(e, &midi_data->fadeTime, data->effectBlockIndex,
+			FFW_MIDI_PERIODIC_FADE_TIME, fadeTime);
 		midi_data_len = sizeof(FFW_MIDI_Effect_Periodic_Ramp_t);
 	}
 	break;
@@ -500,6 +657,12 @@ int FfbwheelSetEffect(
 	case USB_EFFECT_CONSTANT:
 	case USB_EFFECT_CUSTOM:
 	{
+		FFW_MIDI_Effect_ConstantForce_t* midi_data =
+			(FFW_MIDI_Effect_ConstantForce_t*)e->data;
+		FfbwheelSetModify14(e, &midi_data->fadeTime, data->effectBlockIndex,
+			FFW_MIDI_CONSTANT_FADE_TIME, fadeTime);
+		if (data->effectType == USB_EFFECT_CONSTANT)
+			FfbwheelUpdateConstantForce(data->effectBlockIndex, e);
 		midi_data_len = sizeof(FFW_MIDI_Effect_ConstantForce_t);
 	}
 	break;
@@ -579,7 +742,7 @@ void FfbwheelCreateNewEffect(
 		midi_data->attackTime = 0x0000;
 		midi_data->magnitude = 0x7f;
 		midi_data->fadeLevel = 0x7f;
-		midi_data->offset = 0x3e;
+		midi_data->offset = FFW_PERIODIC_OFFSET_ZERO;
 
 		if (data->effectType == USB_EFFECT_RAMP) {
 			midi_data->phase = 0x0000;
