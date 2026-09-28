@@ -1529,7 +1529,7 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptorJoystick =
 #endif // ENABLE_JOYSTICK_SERIAL
 	.ReleaseNumber          = VERSION_BCD(00.01),
 
-	.ManufacturerStrIndex   = 0x01,
+	.ManufacturerStrIndex   = NO_DESCRIPTOR,
 	.ProductStrIndex        = 0x02,
 	.SerialNumStrIndex      = NO_DESCRIPTOR,
 
@@ -1563,7 +1563,7 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptorWheel =
 #endif // ENABLE_JOYSTICK_SERIAL
 	.ReleaseNumber          = VERSION_BCD(00.01),
 
-	.ManufacturerStrIndex   = 0x01,
+	.ManufacturerStrIndex   = NO_DESCRIPTOR,
 	.ProductStrIndex        = 0x02,
 	.SerialNumStrIndex      = NO_DESCRIPTOR,
 
@@ -1764,17 +1764,6 @@ const USB_Descriptor_String_t PROGMEM LanguageString =
 	.UnicodeString          = {LANGUAGE_ID_ENG}
 };
 
-/** Manufacturer descriptor string. This is a Unicode string containing the manufacturer's details in human readable
- *  form, and is read out upon request by the host when the appropriate string ID is requested, listed in the Device
- *  Descriptor.
- */
-const USB_Descriptor_String_t PROGMEM ManufacturerString =
-{
-	.Header                 = {.Size = USB_STRING_LEN(4), .Type = DTYPE_String},
-
-	.UnicodeString          = L"DPRK"
-};
-
 /** Product descriptor string. This is a Unicode string containing the product's details in human readable form,
  *  and is read out upon request by the host when the appropriate string ID is requested, listed in the Device
  *  Descriptor.
@@ -1831,10 +1820,6 @@ uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue,
 				case 0x00:
 					Address = &LanguageString;
 					Size    = pgm_read_byte(&LanguageString.Header.Size);
-					break;
-				case 0x01:
-					Address = &ManufacturerString;
-					Size    = pgm_read_byte(&ManufacturerString.Header.Size);
 					break;
 				case 0x02:
 					if (sw_id == SW_ID_FFPW) {
