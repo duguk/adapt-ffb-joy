@@ -8,6 +8,8 @@ For more information, see [Adapt-ffb-joy Wiki](https://github.com/tloimu/adapt-f
 
 # Status of this fork #
 
+### **Steering Wheel (including Force Feedback) is successfully working in Linux!**
+
 This fork is based on ej113's `master` branch. ej113's later work, merged into tloimu's `master` as 0.5.0beta1 (mainly further Force Feedback Pro effect fixes), isn't included yet.
 
 **Sidewinder Force Feedback Wheel: working on Linux.** Tested on real hardware with kernel 6.18 and the in-kernel `hid-pidff` driver:
@@ -23,6 +25,16 @@ This fork is based on ej113's `master` branch. ej113's later work, merged into t
 
 Bug reports and test results, especially from Windows or Force Feedback Pro users, are welcome.
 
+# How an LLM was used in this project #
+
+This fork heavily uses an LLM. Why? I've owned this wheel since around 1998, and since support was dropped and hardware unavailable, I've wanted to see this working again. Many people have worked hard to contribute to this project, but support for Linux has been lacking. I've found it hard to find the time to do so myself, but desperately wanted to see it working. So, I've used an AI coding assistant, to help read the documentation, as well as write and debug the code.
+
+Most of the wheel and Linux work in this fork was written with the help of an AI coding assistant, Anthropic's Claude (through Claude Code). The assistant read the existing code and the kernel's `hid-pidff` behaviour, proposed and wrote the changes, and drove tests through the debug serial port and the Linux input devices.
+
+The Sidewinder wheel's MIDI protocol isn't documented, so much of the work was experimenting on the hardware. The assistant sent raw MIDI to the wheel, then watched the steering axis and the debug log to work out what each parameter does. For example, it worked out that the condition coefficients are centred on `0x40`, and which low-byte values add an unwanted constant push. The comments in `ffb-wheel.c` and `ffb-wheel.h` record these findings.
+
+A human did all of the hardware setup, physical testing and game testing, and decided what to keep. Even so, treat the code the way you would any contribution: read it, test it on your own hardware, and report anything that looks wrong.
+
 # Quick start #
 
 ## What you need ##
@@ -32,53 +44,42 @@ Bug reports and test results, especially from Windows or Force Feedback Pro user
 * a female DB15 connector, to plug the game port cable into
 * 2 × 2.2 kΩ resistors and 1 × 220 Ω resistor
 * optionally, 2 × 1 nF capacitors, and a relay for back-power protection (see [My Hardware Modifications](#my-hardware-modifications))
-* a USB cable, and a soldering iron or breadboard and wires
-* a PC with `avr-gcc`, `avr-libc` and `make` to build the firmware, and a tool to flash it (e.g. [Teensy Loader](https://www.pjrc.com/teensy/loader.html))
 
 ## Steps ##
 
 1. **Build the adapter.** Wire the Teensy to the DB15 connector as shown in the [circuit diagram](#circuit-diagram).
 2. **Build and flash the firmware.** Connect the Teensy by USB, run `make` (or use the existing [Joystick.hex](Joystick.hex) file provided), then press the Teensy's button and run `teensy_loader_cli --mcu=TEENSY2 -w Joystick.hex`. See [Building and flashing](#building-and-flashing).
-3. **Connect it up, in this order:**
-   1. Plug the adapter into the PC by USB.
-   2. Power on the wheel or joystick.
-   3. Connect its game port cable to the adapter.
-
-   The Teensy's LED flashes until it finds the wheel or joystick. Only then does the adapter appear on USB. Connecting the game port to an unpowered Teensy can back-power it. The relay modification is one way to solve this problem.
+3. **Connect it up:** Connect its game port cable to the adapter AFTER powering on the wheel or joystick.
+   Connecting the game port to an unpowered Teensy can back-power it. The relay modification is one way to solve this problem.
+   The Teensy's LED flashes until it finds the wheel or joystick. Only then does the adapter appear on USB.
 4. **Turn the Force switch on** (wheel only). With it off, the wheel ignores all force feedback.
 5. **Check that it works.**
    * **Linux:** the device appears as *Sidewinder Wheel FFB* or *Sidewinder Joystick FFB*. Check the axes and buttons with `evtest`, and force feedback with `fftest /dev/input/eventN` from the `linuxconsole` tools. Reading `/dev/input/event*` usually needs root or membership of the `input` group.
    * **Windows:** open *Set up USB game controllers* (`joy.cpl`) and check the axes and buttons in *Properties*.
 6. **Set up your games.** Some games need extra setup to use the wheel's force feedback. See [Game notes](#game-notes).
 
-# How an LLM was used in this project #
-
-Why an LLM? I've owned this wheel since around 1998, and since support was dropped and hardware unavailable, I've wanted to see this working again. Many people have worked hard to contribute to this project, but I've found it hard to find the time to do so myself. So, I've used an AI coding assistant, to help read the documentation, as well as write and debug the code.
-
-Most of the wheel and Linux work in this fork was written with the help of an AI coding assistant, Anthropic's Claude (through Claude Code). The assistant read the existing code and the kernel's `hid-pidff` behaviour, proposed and wrote the changes, and drove tests through the debug serial port and the Linux input devices.
-
-The Sidewinder wheel's MIDI protocol isn't documented, so much of the work was experimenting on the hardware. The assistant sent raw MIDI to the wheel, then watched the steering axis and the debug log to work out what each parameter does. For example, it worked out that the condition coefficients are centred on `0x40`, and which low-byte values add an unwanted constant push. The comments in `ffb-wheel.c` and `ffb-wheel.h` record these findings.
-
-A human did all of the hardware setup, physical testing and game testing, and decided what to keep. Even so, treat the code the way you would any contribution: read it, test it on your own hardware, and report anything that looks wrong.
-
 # How to Build #
 
-## My Hardware Modifications ##
+## My Hardware ##
 
 I used a Teensy 2.0 clone with a 16 MHz crystal from [Amazon](https://www.amazon.co.uk/dp/B0C6T33T7W).
 
 [ej113 reported a back-powering potential](https://github.com/tloimu/adapt-ffb-joy/issues/49) which means that the Teensy should be connected first, before the gameport is connected.
 beel1 suggested adding a 220R resistor for each of the buttons to reduce this problem, which may help to provide some protection.
 
-I also added a relay. The control side of the relay is connected to the power and ground rails of the Teensy, so it turns on when the Teensy is powered. The switching side connects the ground to the gameport to the ground of the Teensy. This avoids switching all the other pins. This effectively means the ground is disconnected from the wheel, until the Teensy is powered, which mitigates the problem.
-I kept the 1nF capacitors for PB4/PB5 but I'm not sure if these are necessary.
+I also added a relay to avoid this problem, effectively connecting the ground only when the Teensy is powered. This avoids switching all the other pins, and means the gameport can stay connected to the wheel.
+
+To do this, the control side of the relay is connected to the power and ground rails of the Teensy, so it turns on when the Teensy is powered. The switching side connects the ground to the gameport to the ground of the Teensy. This effectively means the ground is disconnected from the wheel, until the Teensy is powered, which mitigates the problem.
 
 ## Circuit diagram ##
 
 This is the original adapter circuit ([schematic image](downloads/adaptffbjoy-circuit.png), [TinyCAD file](adaptffbjoy-circuit-tinycad.dsn)), redrawn as text. Teensy 2.0 pin numbers are in brackets. Both the Force Feedback Pro and the Force Feedback Wheel use the same wiring.
 
 The diagram is quite hard to read, be aware that the text labels aren't necessarily closest to the lines.  
+
 Also note that many of the pins are missing on the Gameport connector, because they are not used. You can use this to determine the orientation - as all pins should be connected.
+
+I kept the 1nF capacitors for PB4/PB5 but I'm not sure if these are necessary.
 
 | AVR | DB15 | Desc                                              |
 |:----|:-----|:--------------------------------------------------|
@@ -93,9 +94,11 @@ Also note that many of the pins are missing on the Gameport connector, because t
 | VCC | 1 | Vcc for joystick                                  |
 | GND | 4 | GND for joystick |
 
-If using the relay, the GND wire between AVR and Joystick should be split, and connected to the NO pin and Common pin on the switched side of the relay.
-The powered side of the relay should simply be connected to the AVR power and ground. This means that the relay is off when not connected to USB, so that the AVR is not back-powered.
+## Relay Modification ##
 
+If using a relay (e.g. SRD-05VDC-5L), the GND wire between AVR and Joystick should be split, and connected to the NO pin and Common pin on the switched side of the relay.
+
+The powered side of the relay should simply be connected to the AVR power and ground. This means that the relay is off when not connected to USB, so that the AVR is not back-powered.
 
 # History of this fork #
 
@@ -129,7 +132,7 @@ The wheel works with the in-kernel `hid-pidff` driver, with no extra drivers nee
 * writes to effect block 1 are ignored, because that block is the wheel's built-in centering spring
 * the PID State report doesn't claim a Safety Switch, which Linux would show as an extra button
 
-You can check force feedback with `fftest` or `ffcfhtest` from the `linuxconsole` tools. Turn the wheel's Force switch on first.
+You can check force feedback with `fftest` or `ffcfhtest` from the `linuxconsole` tools. Turn the wheel's Force switch on first. Check you are using the correct device, by checking `dmesg` for the device name.
 
 ### Game notes ###
 
@@ -155,7 +158,7 @@ make
 
 This builds `Joystick.hex` for an ATmega32U4 at 16 MHz, such as a Teensy 2.0.
 
-Flash it with the usual tool for your board, e.g. Teensy Loader, `dfu-programmer` (`make dfu`) or `avrdude` for Caterina bootloaders.
+Flash it with the usual tool for your board, e.g. [Teensy Loader](https://github.com/paulstoffregen/teensy_loader_cli), `dfu-programmer` (`make dfu`) or `avrdude` for Caterina bootloaders.
 
 ```
 teensy_loader_cli --mcu=TEENSY2 -w Joystick.hex
