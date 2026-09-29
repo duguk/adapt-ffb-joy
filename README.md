@@ -2,7 +2,7 @@
 
 Adapt-FFB-Joy is an AVR microcontroller based device that looks like a joystick with advanced force feedback features in a Windows machine without need for installing any device drivers to PC.
 
-This project contains the software for the AVR microcontroller. The original instructions for [building the hardware](https://github.com/tloimu/adapt-ffb-joy/blob/wiki/HowToBuild.md) are found on the [Adapt-ffb-joy Wiki](https://github.com/tloimu/adapt-ffb-joy/blob/wiki/README.md), and some alternative instructions are below.
+This project contains the software for the AVR microcontroller. The original instructions for [building the hardware](https://github.com/tloimu/adapt-ffb-joy/blob/wiki/HowToBuild.md) are found on the [Adapt-ffb-joy Wiki](https://github.com/tloimu/adapt-ffb-joy/blob/wiki/README.md), and [some alternative instructions are below](#how-to-build-).
 
 For more information, see [Adapt-ffb-joy Wiki](https://github.com/tloimu/adapt-ffb-joy/blob/wiki/README.md)
 
@@ -73,7 +73,7 @@ To do this, the control side of the relay is connected to the power and ground r
 
 ## Circuit diagram ##
 
-This is the original adapter circuit ([schematic image](downloads/adaptffbjoy-circuit.png), [TinyCAD file](adaptffbjoy-circuit-tinycad.dsn)), redrawn as text. Teensy 2.0 pin numbers are in brackets. Both the Force Feedback Pro and the Force Feedback Wheel use the same wiring.
+This is the original adapter circuit ([schematic image](downloads/adaptffbjoy-circuit.png), [TinyCAD file](adaptffbjoy-circuit-tinycad.dsn)). Teensy 2.0 pin numbers are in brackets. Both the Force Feedback Pro and the Force Feedback Wheel use the same wiring.
 
 The diagram is quite hard to read, be aware that the text labels aren't necessarily closest to the lines.  
 
@@ -81,18 +81,18 @@ Also note that many of the pins are missing on the Gameport connector, because t
 
 I kept the 1nF capacitors for PB4/PB5 but I'm not sure if these are necessary.
 
-| AVR | DB15 | Desc                                              |
-|:----|:-----|:--------------------------------------------------|
-| PB0 | 2 | Button1                                           |
-| PB1 | 7 | Button2                                           |
-| PB2 | 10 | Button3                                           |
-| PB3 | 14 | Button4                                           |
-| PB4 | 11 | X1 (with 2.2k Ohm resistor in series)             |
-| PB5 | 3 | X2 (with 2.2k Ohm resistor in series)             |
-| PD0 | 2 | Button1 (INT)                                     |
-| PD3 | 12 | MIDI out (with 220 Ohm resistor in series)        |
-| VCC | 1 | Vcc for joystick                                  |
-| GND | 4 | GND for joystick |
+| AVR | DB15 | Desc                                       |
+|:----|:-----|:-------------------------------------------|
+| PB0 | 2 | Button1                                    |
+| PB1 | 7 | Button2                                    |
+| PB2 | 10 | Button3                                    |
+| PB3 | 14 | Button4                                    |
+| PB4 | 11 | X1 (with 2.2k Ohm resistor in series)      |
+| PB5 | 3 | X2 (with 2.2k Ohm resistor in series)      |
+| PD0 | 2 | Button1 (INT)                              |
+| PD3 | 12 | MIDI out (with 220 Ohm resistor in series) |
+| VCC | 1 | Vcc for joystick                           |
+| GND | 4 | GND for joystick / relay NO                |
 
 ## Relay Modification ##
 
