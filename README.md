@@ -73,26 +73,31 @@ To do this, the control side of the relay is connected to the power and ground r
 
 ## Circuit diagram ##
 
-This is the original adapter circuit ([schematic image](downloads/adaptffbjoy-circuit.png), [TinyCAD file](adaptffbjoy-circuit-tinycad.dsn)). Teensy 2.0 pin numbers are in brackets. Both the Force Feedback Pro and the Force Feedback Wheel use the same wiring.
+This is the original adapter circuit ([schematic image](downloads/adaptffbjoy-circuit.png), [TinyCAD file](adaptffbjoy-circuit-tinycad.dsn)). Teensy 2.0 pin numbers are in brackets. Both the Force Feedback Pro and the Force Feedback Wheel use the same wiring. The original diagram is quite hard to read, be aware that the text labels aren't necessarily closest to the lines.  
 
-The diagram is quite hard to read, be aware that the text labels aren't necessarily closest to the lines.  
+Many of the pins are missing on the Gameport connector, because they are not used. You can use this to determine the orientation - as all pins should be connected.
 
-Also note that many of the pins are missing on the Gameport connector, because they are not used. You can use this to determine the orientation - as all pins should be connected.
+I kept the 1nF capacitors for PB4/PB5, but I'm not sure if these are necessary.
 
-I kept the 1nF capacitors for PB4/PB5 but I'm not sure if these are necessary.
+The **DB15 Plug** column is the original pinout. **DB15 Socket** column is how the sockets are usually labelled.
 
-| AVR | DB15 | Desc                                       |
-|:----|:-----|:-------------------------------------------|
-| PB0 | 2 | Button1                                    |
-| PB1 | 7 | Button2                                    |
-| PB2 | 10 | Button3                                    |
-| PB3 | 14 | Button4                                    |
-| PB4 | 11 | X1 (with 2.2k Ohm resistor in series)      |
-| PB5 | 3 | X2 (with 2.2k Ohm resistor in series)      |
-| PD0 | 2 | Button1 (INT)                              |
-| PD3 | 12 | MIDI out (with 220 Ohm resistor in series) |
-| VCC | 1 | Vcc for joystick                           |
-| GND | 4 | GND for joystick / relay NO                |
+| AVR | DB15 Plug | DB15 Socket | Desc    |
+|:----|:----------|:------------|:--------|
+| PB0 | 2         | 7           | Button1 |
+| PB1 | 7         | 2           | Button2                                    |
+| PB2 | 10        | 14          | Button3                                    |
+| PB3 | 14        | 9           | Button4                                    |
+| PB4 | 11        | 13          | X1 (with 2.2k Ohm resistor in series)      |
+| PB5 | 3         | 6           | X2 (with 2.2k Ohm resistor in series)      |
+| PD0 | 2         | 7           | Button1 (INT)                              |
+| PD3 | 12        | 12          | MIDI out (with 220 Ohm resistor in series) |
+| VCC | 1         | 8           | Vcc for joystick                           |
+| GND | 4         | 5           | GND for joystick / relay NO                |
+
+
+![Circuit Design](circuit_image.svg)
+
+[Link to circuit design on cirkitdesigner.com](https://app.cirkitdesigner.com/project/ec76bc9e-00f6-4d31-8160-4583d4233e41)
 
 ## Relay Modification ##
 
