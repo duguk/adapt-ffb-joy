@@ -79,20 +79,18 @@ Many of the pins are missing on the Gameport connector, because they are not use
 
 I kept the 1nF capacitors for PB4/PB5, but I'm not sure if these are necessary.
 
-The **DB15 Plug** column is the original pinout. **DB15 Socket** column is how the sockets are usually labelled.
-
-| AVR | DB15 Plug | DB15 Socket | Desc    |
-|:----|:----------|:------------|:--------|
-| PB0 | 2         | 7           | Button1 |
-| PB1 | 7         | 2           | Button2                                    |
-| PB2 | 10        | 14          | Button3                                    |
-| PB3 | 14        | 9           | Button4                                    |
-| PB4 | 11        | 13          | X1 (with 2.2k Ohm resistor in series)      |
-| PB5 | 3         | 6           | X2 (with 2.2k Ohm resistor in series)      |
-| PD0 | 2         | 7           | Button1 (INT)                              |
-| PD3 | 12        | 12          | MIDI out (with 220 Ohm resistor in series) |
-| VCC | 1         | 8           | Vcc for joystick                           |
-| GND | 4         | 5           | GND for joystick / relay NO                |
+| AVR | DB15 Plug | Name             | Resistor  | Desc      |
+|:----|:----------|:-----------------|:----------|:----------|
+| PB0 | 2         | Button1          | 220Ω      |           |
+| PB1 | 7         | Button2          | 220Ω      |           |
+| PB2 | 10        | Button3          | 220Ω      |           |
+| PB3 | 14        | Button4          | 220Ω      |           |
+| PB4 | 11        | X1               | 2.2kΩ     |           |
+| PB5 | 3         | X2               | 2.2kΩ     |           |
+| PD0 | 2         | Button1          | 220Ω      | Interrupt |
+| PD3 | 12        | MIDI out         | 220Ω      |           |
+| VCC | 1         | Vcc for joystick |           |           |
+| GND | 4         | GND for joystick | Relay NO  |           |
 
 
 ![Circuit Design](circuit_image.svg)
