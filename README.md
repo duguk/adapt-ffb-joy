@@ -79,6 +79,7 @@ Many of the pins are missing on the Gameport connector, because they are not use
 
 I kept the 1nF capacitors for PB4/PB5, but I'm not sure if these are necessary.
 
+
 | AVR | DB15 Plug | Name             | Resistor  | Desc      |
 |:----|:----------|:-----------------|:----------|:----------|
 | PB0 | 2         | Button1          | 220Ω      |           |
