@@ -94,7 +94,7 @@ I kept the 1nF capacitors for PB4/PB5, but I'm not sure if these are necessary.
 | GND | 4         | GND for joystick | Relay NO  |           |
 
 
-![Circuit Design](circuit_image.svg)
+![Circuit Design](downloads/circuit_image.svg)
 
 [Link to circuit design on cirkitdesigner.com](https://app.cirkitdesigner.com/project/ec76bc9e-00f6-4d31-8160-4583d4233e41)
 
