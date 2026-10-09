@@ -17,6 +17,7 @@ This fork is based on ej113's `master` branch. ej113's later work, merged into t
 * steering, pedals and all buttons
 * force feedback effects, checked with `fftest` and raw MIDI over the debug port
 * DiRT Rally 2.0 under Proton (after the [`device_defines.xml` change](#game-notes))
+* Burnout Paradise: The Ultimate Box under Proton
 
 **Not yet tested:**
 
@@ -147,6 +148,8 @@ You can check force feedback with `fftest` or `ffcfhtest` from the `linuxconsole
   ```
 
   Steam's *Verify integrity of game files* reverts this file.
+
+* **Burnout Paradise: The Ultimate Box** (Proton): Reduce the deadzone in settings (press F2 repeatedly to get to the correct menu).
 
 ## Joystick changes ##
 
